@@ -32,4 +32,5 @@ memory/
 .deno_cache/
 *test.ipynb
 *CLAUDE.md
+*AGENTS.md
 *meals/

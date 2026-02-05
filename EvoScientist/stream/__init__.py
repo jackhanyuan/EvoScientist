@@ -36,6 +36,7 @@ from .display import (
     format_tool_result_compact,
     create_streaming_display,
     display_final_results,
+    _astream_to_console,
 )
 
 __all__ = [
@@ -75,4 +76,5 @@ __all__ = [
     "format_tool_result_compact",
     "create_streaming_display",
     "display_final_results",
+    "_astream_to_console",
 ]

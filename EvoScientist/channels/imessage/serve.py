@@ -146,6 +146,7 @@ class IMessageServer:
         initial_debounce: float = 2.0,
         debounce_step: float = 0.5,
         max_debounce: float = 5.0,
+        on_activity: Callable | None = None,
     ):
         """Initialize iMessage server.
 
@@ -156,6 +157,7 @@ class IMessageServer:
             initial_debounce: Wait time after first message (seconds).
             debounce_step: Additional wait per subsequent message.
             max_debounce: Maximum debounce window cap.
+            on_activity: Optional callback(sender, direction) for notifications.
         """
         self.config = config
         self.channel = IMessageChannel(config)
@@ -165,6 +167,7 @@ class IMessageServer:
         self.max_debounce = max_debounce
         self._running = False
         self._pending_thinking: dict[str, str] = {}  # sender -> accumulated thinking
+        self._on_activity = on_activity
 
         # Message buffering for debounce
         self._message_buffers: dict[str, list[str]] = {}  # sender -> [messages]
@@ -222,6 +225,11 @@ class IMessageServer:
                     content=response,
                     metadata=metadata,
                 ))
+                if self._on_activity:
+                    try:
+                        self._on_activity(sender, "replied")
+                    except Exception:
+                        pass
         except Exception as e:
             logger.error(f"Handler error: {e}")
         finally:
@@ -255,6 +263,12 @@ class IMessageServer:
             self._message_buffers[sender] = []
             self._message_metadata[sender] = msg.metadata
         self._message_buffers[sender].append(msg.content)
+
+        if self._on_activity:
+            try:
+                self._on_activity(sender, "received")
+            except Exception:
+                pass
 
         # Agent is busy — just buffer, no debounce needed
         if sender in self._processing:

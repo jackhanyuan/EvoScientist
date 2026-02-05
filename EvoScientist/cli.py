@@ -13,10 +13,14 @@ Features:
 - Configuration management (onboard, config commands)
 """
 
+import asyncio
 import logging
 import os
+import queue
 import sys
+import threading
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
 
@@ -30,7 +34,7 @@ from rich.table import Table  # type: ignore[import-untyped]
 
 # Backward-compat re-exports (tests import these from EvoScientist.cli)
 from .stream.state import SubAgentState, StreamState, _parse_todo_items, _build_todo_stats  # noqa: F401
-from .stream.display import console, _run_streaming
+from .stream.display import console, _run_streaming, _astream_to_console
 from .paths import ensure_dirs, new_run_dir, default_workspace_dir
 
 
@@ -48,6 +52,122 @@ def _shorten_path(path: str) -> str:
         return path
     except Exception:
         return path
+
+
+# =============================================================================
+# Background iMessage channel
+# =============================================================================
+
+_channel_logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ChannelMessage:
+    """Message from a channel (iMessage, Email, etc.)."""
+    msg_id: str
+    content: str
+    sender: str
+    channel_type: str  # "iMessage", "Email", "Slack"
+    metadata: Any = None
+
+
+class _ChannelState:
+    """Singleton tracking background iMessage channel and message queue."""
+
+    server = None       # IMessageServer | None
+    thread = None       # threading.Thread | None
+    loop = None         # asyncio.AbstractEventLoop | None
+    agent = None        # shared agent reference (same as CLI)
+    thread_id = None    # shared thread_id (same conversation as CLI)
+
+    # Queue-based communication between channel thread and main CLI thread
+    message_queue: queue.Queue = queue.Queue()
+    pending_responses: dict = {}  # msg_id -> {"event": Event, "response": str | None}
+    _response_lock = threading.Lock()
+
+    @classmethod
+    def is_running(cls) -> bool:
+        return cls.thread is not None and cls.thread.is_alive()
+
+    @classmethod
+    def stop(cls):
+        if cls.loop and cls.server:
+            cls.loop.call_soon_threadsafe(
+                lambda: asyncio.ensure_future(cls.server.stop())
+            )
+        if cls.thread:
+            cls.thread.join(timeout=5)
+        cls.server = None
+        cls.thread = None
+        cls.loop = None
+        cls.agent = None
+        cls.thread_id = None
+        # Clear pending responses
+        with cls._response_lock:
+            for slot in cls.pending_responses.values():
+                slot["event"].set()  # Unblock any waiting handlers
+            cls.pending_responses.clear()
+
+    @classmethod
+    def enqueue(
+        cls,
+        content: str,
+        sender: str,
+        channel_type: str,
+        metadata: Any = None,
+    ) -> tuple[str, threading.Event]:
+        """Enqueue a message from any channel for main thread processing.
+
+        Returns:
+            Tuple of (msg_id, event) - caller can wait on event for response.
+        """
+        msg_id = str(uuid.uuid4())
+        event = threading.Event()
+        with cls._response_lock:
+            cls.pending_responses[msg_id] = {"event": event, "response": None}
+        cls.message_queue.put(ChannelMessage(msg_id, content, sender, channel_type, metadata))
+        return msg_id, event
+
+    @classmethod
+    def set_response(cls, msg_id: str, response: str) -> None:
+        """Set response and signal completion."""
+        with cls._response_lock:
+            if msg_id in cls.pending_responses:
+                cls.pending_responses[msg_id]["response"] = response
+                cls.pending_responses[msg_id]["event"].set()
+
+    @classmethod
+    def get_response(cls, msg_id: str, timeout: float = 300) -> str | None:
+        """Wait for and retrieve response.
+
+        Args:
+            msg_id: The message ID to get response for.
+            timeout: Maximum seconds to wait (default 300 = 5 minutes).
+
+        Returns:
+            The response text, or None if timed out or not found.
+        """
+        with cls._response_lock:
+            slot = cls.pending_responses.get(msg_id)
+        if not slot:
+            return None
+        if slot["event"].wait(timeout=timeout):
+            with cls._response_lock:
+                return cls.pending_responses.pop(msg_id, {}).get("response")
+        return None
+
+
+def _run_channel_thread(server):
+    """Entry point for background channel thread."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    _ChannelState.loop = loop
+    try:
+        loop.run_until_complete(server.run())
+    except Exception as e:
+        _channel_logger.error(f"Channel error: {e}")
+    finally:
+        loop.close()
 
 
 # =============================================================================
@@ -194,18 +314,55 @@ def _cmd_uninstall_skill(name: str) -> None:
     console.print()
 
 
-def _cmd_channel(args: str) -> None:
-    """Start iMessage channel server.
+def _create_channel_handler():
+    """Create iMessage handler that enqueues messages for main thread processing.
 
-    Usage: /channel [--allow SENDER] [--thinking]
+    The handler enqueues messages to the shared queue and waits for the main
+    CLI thread to process them with full Rich Live streaming. This ensures
+    channel messages get the same display quality as direct CLI input.
+
+    Returns:
+        Async handler function: (msg) -> str
     """
-    import asyncio
+
+    async def handler(msg) -> str:
+        # Enqueue for main thread to process with full Live streaming
+        msg_id, event = _ChannelState.enqueue(
+            content=msg.content,
+            sender=msg.sender,
+            channel_type="iMessage",
+            metadata=msg.metadata,
+        )
+
+        # Wait for main thread to process and set response
+        response = await asyncio.to_thread(
+            _ChannelState.get_response, msg_id, 300  # 5 minute timeout
+        )
+
+        return response or "No response"
+
+    return handler
+
+
+def _cmd_channel(args: str, agent: Any, thread_id: str) -> None:
+    """Start iMessage channel in background thread using the shared agent.
+
+    CLI and iMessage share the same agent + thread_id (same conversation).
+    When an iMessage arrives, the main CLI thread processes it with full
+    Rich Live streaming — same experience as direct CLI input.
+
+    Usage: /channel [--allow SENDER]
+    """
     from .channels.imessage import IMessageConfig
-    from .channels.imessage.serve import IMessageServer, create_agent_handler
+    from .channels.imessage.serve import IMessageServer
+
+    if _ChannelState.is_running():
+        console.print("[dim]iMessage channel already running[/dim]")
+        console.print("[dim]Use[/dim] /channel stop [dim]to disconnect[/dim]\n")
+        return
 
     parts = args.split() if args else []
     allowed = set()
-    send_thinking = "--thinking" in parts
 
     for i, p in enumerate(parts):
         if p == "--allow" and i + 1 < len(parts):
@@ -215,31 +372,38 @@ def _cmd_channel(args: str) -> None:
         allowed_senders=allowed if allowed else None,
     )
 
-    console.print("[dim]Loading agent for iMessage channel...[/dim]")
+    # Store shared agent reference — no separate agent creation
+    _ChannelState.agent = agent
+    _ChannelState.thread_id = thread_id
+
     server = IMessageServer(
         config,
-        handler=None,
-        send_thinking=send_thinking,
+        handler=_create_channel_handler(),
     )
 
-    on_thinking = server.send_thinking_message if send_thinking else None
-    on_todo = server.send_todo_message
-    handler = create_agent_handler(on_thinking=on_thinking, on_todo=on_todo)
-    server.handler = handler
+    _ChannelState.server = server
+    _ChannelState.thread = threading.Thread(
+        target=_run_channel_thread,
+        args=(server,),
+        daemon=True,
+    )
+    _ChannelState.thread.start()
 
-    console.print("[green]iMessage channel started[/green]")
+    console.print("[green]iMessage channel running in background[/green]")
     if allowed:
         console.print(f"[dim]Allowed:[/dim] {allowed}")
     else:
-        console.print("[dim]Allowing all senders[/dim]")
-    if send_thinking:
-        console.print("[dim]Thinking messages enabled[/dim]")
-    console.print("[dim]Press Ctrl+C to stop[/dim]\n")
+        console.print("[dim]Allowed: all senders[/dim]")
+    console.print("[dim]Use[/dim] /channel stop [dim]to disconnect[/dim]\n")
 
-    try:
-        asyncio.run(server.run())
-    except KeyboardInterrupt:
-        console.print("\n[dim]Channel stopped[/dim]")
+
+def _cmd_channel_stop() -> None:
+    """Stop background iMessage channel."""
+    if not _ChannelState.is_running():
+        console.print("[dim]No channel running[/dim]\n")
+        return
+    _ChannelState.stop()
+    console.print("[dim]iMessage channel stopped[/dim]\n")
 
 
 # =============================================================================
@@ -266,6 +430,9 @@ def cmd_interactive(
         model: Model name to display in banner
         provider: LLM provider name to display in banner
     """
+    import nest_asyncio
+    nest_asyncio.apply()
+
     thread_id = str(uuid.uuid4())
     from .EvoScientist import MEMORY_DIR
     memory_dir = MEMORY_DIR
@@ -283,82 +450,152 @@ def cmd_interactive(
         width = console.size.width
         console.print(Text("\u2500" * width, style="dim"))
 
-    _print_separator()
-    while True:
+    # Mutable state for async loop
+    state = {
+        "agent": agent,
+        "thread_id": thread_id,
+        "workspace_dir": workspace_dir,
+        "running": True,
+    }
+
+    def _process_channel_message(msg: ChannelMessage) -> None:
+        """Process a message from a channel with full Live streaming."""
+        _print_separator()
+        # Display prompt with channel source tag
+        source_tag = f"[{msg.channel_type}: {msg.sender}]"
+        console.print(f"[bold blue]>[/bold blue] {msg.content} [dim]{source_tag}[/dim]")
+        console.print()
+
+        # Use SAME _run_streaming as CLI input — full Live experience
+        response_text = _run_streaming(
+            state["agent"], msg.content, state["thread_id"], show_thinking, interactive=True
+        )
+
+        # Set response for channel handler to retrieve
+        _ChannelState.set_response(msg.msg_id, response_text or "")
+
+        _print_separator()
+
+    async def _check_channel_queue():
+        """Background task to check channel queue periodically."""
+        while state["running"]:
+            try:
+                msg = _ChannelState.message_queue.get_nowait()
+                _process_channel_message(msg)
+            except queue.Empty:
+                pass
+            await asyncio.sleep(0.1)  # Check every 100ms
+
+    async def _async_main_loop():
+        """Async main loop with prompt_async and channel queue checking."""
+        # Start background queue checker
+        queue_task = asyncio.create_task(_check_channel_queue())
+
         try:
-            user_input = session.prompt(
-                HTML('<ansiblue><b>&gt;</b></ansiblue> ')
-            ).strip()
-
-            if not user_input:
-                # Erase the empty prompt line so it looks like nothing happened
-                sys.stdout.write("\033[A\033[2K\r")
-                sys.stdout.flush()
-                continue
-
             _print_separator()
+            while state["running"]:
+                try:
+                    user_input = await session.prompt_async(
+                        HTML('<ansiblue><b>&gt;</b></ansiblue> ')
+                    )
+                    user_input = user_input.strip()
 
-            # Special commands
-            if user_input.lower() in ("/exit", "/quit", "/q"):
-                console.print("[dim]Goodbye![/dim]")
-                break
+                    if not user_input:
+                        # Erase the empty prompt line so it looks like nothing happened
+                        sys.stdout.write("\033[A\033[2K\r")
+                        sys.stdout.flush()
+                        continue
 
-            if user_input.lower() == "/new":
-                # New session: new thread; workspace only changes if not fixed
-                if not workspace_fixed:
-                    workspace_dir = _create_session_workspace()
-                console.print("[dim]Loading new session...[/dim]")
-                agent = _load_agent(workspace_dir=workspace_dir)
-                thread_id = str(uuid.uuid4())
-                console.print(f"[green]New session:[/green] [yellow]{thread_id}[/yellow]")
-                if workspace_dir:
-                    console.print(f"[dim]Workspace:[/dim] [cyan]{_shorten_path(workspace_dir)}[/cyan]\n")
-                continue
+                    _print_separator()
 
-            if user_input.lower() == "/thread":
-                console.print(f"[dim]Thread:[/dim] [yellow]{thread_id}[/yellow]")
-                if workspace_dir:
-                    console.print(f"[dim]Workspace:[/dim] [cyan]{_shorten_path(workspace_dir)}[/cyan]")
-                if memory_dir:
-                    console.print(f"[dim]Memory dir:[/dim] [cyan]{_shorten_path(memory_dir)}[/cyan]")
-                console.print()
-                continue
+                    # Special commands
+                    if user_input.lower() in ("/exit", "/quit", "/q"):
+                        console.print("[dim]Goodbye![/dim]")
+                        state["running"] = False
+                        break
 
-            if user_input.lower() == "/skills":
-                _cmd_list_skills()
-                continue
+                    if user_input.lower() == "/new":
+                        # New session: new thread; workspace only changes if not fixed
+                        if not workspace_fixed:
+                            state["workspace_dir"] = _create_session_workspace()
+                        console.print("[dim]Loading new session...[/dim]")
+                        state["agent"] = _load_agent(workspace_dir=state["workspace_dir"])
+                        state["thread_id"] = str(uuid.uuid4())
+                        # Sync shared refs if channel is running
+                        if _ChannelState.is_running():
+                            _ChannelState.agent = state["agent"]
+                            _ChannelState.thread_id = state["thread_id"]
+                        console.print(f"[green]New session:[/green] [yellow]{state['thread_id']}[/yellow]")
+                        if state["workspace_dir"]:
+                            console.print(f"[dim]Workspace:[/dim] [cyan]{_shorten_path(state['workspace_dir'])}[/cyan]\n")
+                        continue
 
-            if user_input.lower().startswith("/install-skill"):
-                source = user_input[len("/install-skill"):].strip()
-                _cmd_install_skill(source)
-                continue
+                    if user_input.lower() == "/thread":
+                        console.print(f"[dim]Thread:[/dim] [yellow]{state['thread_id']}[/yellow]")
+                        if state["workspace_dir"]:
+                            console.print(f"[dim]Workspace:[/dim] [cyan]{_shorten_path(state['workspace_dir'])}[/cyan]")
+                        if memory_dir:
+                            console.print(f"[dim]Memory dir:[/dim] [cyan]{_shorten_path(memory_dir)}[/cyan]")
+                        console.print()
+                        continue
 
-            if user_input.lower().startswith("/uninstall-skill"):
-                name = user_input[len("/uninstall-skill"):].strip()
-                _cmd_uninstall_skill(name)
-                continue
+                    if user_input.lower() == "/skills":
+                        _cmd_list_skills()
+                        continue
 
-            if user_input.lower().startswith("/channel"):
-                args = user_input[len("/channel"):].strip()
-                _cmd_channel(args)
-                continue
+                    if user_input.lower().startswith("/install-skill"):
+                        source = user_input[len("/install-skill"):].strip()
+                        _cmd_install_skill(source)
+                        continue
 
-            # Stream agent response
-            console.print()
-            _run_streaming(agent, user_input, thread_id, show_thinking, interactive=True)
-            _print_separator()
+                    if user_input.lower().startswith("/uninstall-skill"):
+                        name = user_input[len("/uninstall-skill"):].strip()
+                        _cmd_uninstall_skill(name)
+                        continue
 
-        except KeyboardInterrupt:
-            console.print("\n[dim]Goodbye![/dim]")
-            break
-        except Exception as e:
-            error_msg = str(e)
-            if "authentication" in error_msg.lower() or "api_key" in error_msg.lower():
-                console.print("[red]Error: API key not configured.[/red]")
-                console.print("[dim]Run [bold]EvoSci onboard[/bold] to set up your API key.[/dim]")
-                break
-            else:
-                console.print(f"[red]Error: {e}[/red]")
+                    if user_input.lower().startswith("/channel"):
+                        args = user_input[len("/channel"):].strip()
+                        if args.lower() == "stop":
+                            _cmd_channel_stop()
+                        else:
+                            _cmd_channel(args, state["agent"], state["thread_id"])
+                        continue
+
+                    # Stream agent response
+                    console.print()
+                    _run_streaming(state["agent"], user_input, state["thread_id"], show_thinking, interactive=True)
+                    _print_separator()
+
+                except KeyboardInterrupt:
+                    console.print("\n[dim]Goodbye![/dim]")
+                    state["running"] = False
+                    break
+                except EOFError:
+                    # Handle Ctrl+D
+                    console.print("\n[dim]Goodbye![/dim]")
+                    state["running"] = False
+                    break
+                except Exception as e:
+                    error_msg = str(e)
+                    if "authentication" in error_msg.lower() or "api_key" in error_msg.lower():
+                        console.print("[red]Error: API key not configured.[/red]")
+                        console.print("[dim]Run [bold]EvoSci onboard[/bold] to set up your API key.[/dim]")
+                        state["running"] = False
+                        break
+                    else:
+                        console.print(f"[red]Error: {e}[/red]")
+        finally:
+            queue_task.cancel()
+            try:
+                await queue_task
+            except asyncio.CancelledError:
+                pass
+
+    # Run the async main loop
+    try:
+        asyncio.run(_async_main_loop())
+    except KeyboardInterrupt:
+        console.print("\n[dim]Goodbye![/dim]")
 
 
 def cmd_run(agent: Any, prompt: str, thread_id: str | None = None, show_thinking: bool = True, workspace_dir: str | None = None) -> None:

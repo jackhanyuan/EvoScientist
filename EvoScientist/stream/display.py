@@ -579,11 +579,10 @@ def _run_streaming(
     thread_id: str,
     show_thinking: bool,
     interactive: bool,
-) -> None:
+) -> str:
     """Run async streaming and render with Rich Live display.
 
-    Bridges the async stream_agent_events() into synchronous Rich Live rendering
-    using asyncio.run().
+    Bridges the async stream_agent_events() into synchronous Rich Live rendering.
 
     Args:
         agent: Compiled agent graph
@@ -591,7 +590,13 @@ def _run_streaming(
         thread_id: Thread ID
         show_thinking: Whether to show thinking panel
         interactive: If True, use simplified final display (no panel)
+
+    Returns:
+        The final response text.
     """
+    import nest_asyncio
+    nest_asyncio.apply()
+
     state = StreamState()
 
     async def _consume() -> None:
@@ -630,3 +635,94 @@ def _run_streaming(
             state,
             show_tools=True,
         )
+
+    return state.response_text or ""
+
+
+# ---------------------------------------------------------------------------
+# Thread-safe static streaming (for background channels)
+# ---------------------------------------------------------------------------
+
+async def _astream_to_console(
+    agent: Any,
+    message: str,
+    thread_id: str,
+    show_thinking: bool = True,
+) -> str:
+    """Stream agent events to console using static prints (thread-safe, no Live).
+
+    Used by the background iMessage channel to show streaming output in the CLI
+    without conflicting with prompt_toolkit's terminal handling in the main thread.
+
+    Rich console.print() is thread-safe (internal lock), unlike Live which is not.
+
+    Args:
+        agent: Compiled agent graph
+        message: User message
+        thread_id: Thread ID for conversation persistence
+        show_thinking: Whether to display thinking panel
+
+    Returns:
+        The final response text.
+    """
+    state = StreamState()
+
+    async for event in stream_agent_events(agent, message, thread_id):
+        etype = state.handle_event(event)
+
+        # Only show subagent starts as real-time progress.
+        # Full results rendered by display_final_results() after streaming.
+        if etype == "subagent_start":
+            name = event.get("name", "sub-agent")
+            # Skip generic "sub-agent" — real name arrives later;
+            # static prints can't be overwritten like Live display.
+            if name and name != "sub-agent":
+                desc = event.get("description", "")
+                line = Text()
+                line.append("\u25b6 ", style="cyan bold")
+                line.append(f"Cooking with {name}", style="cyan bold")
+                if desc:
+                    short = desc[:50] + "\u2026" if len(desc) > 50 else desc
+                    line.append(f" \u2014 {short}", style="dim")
+                console.print(line)
+
+    # Final output (streaming layout: tools → Task List → subagents → response)
+
+    # Thinking
+    if show_thinking and state.thinking_text:
+        dt = state.thinking_text
+        if len(dt) > 500:
+            dt = dt[:250] + "\n\u2026truncated\u2026\n" + dt[-250:]
+        console.print(Panel(Text(dt, style="dim"), title="Thinking", border_style="blue"))
+
+    # 1) Regular (non-task) tools — above Task List
+    for i, tc in enumerate(state.tool_calls):
+        if tc.get("name", "").lower() == "task":
+            continue
+        tr = state.tool_results[i] if i < len(state.tool_results) else None
+        console.print(_render_tool_call_line(tc, tr))
+        if tr and not is_success(tr.get("content", "")):
+            for elem in format_tool_result_compact(tr["name"], tr.get("content", "")):
+                console.print(elem)
+
+    # 2) Task List panel — middle
+    if state.todo_items:
+        console.print(_render_todo_panel(state.todo_items))
+        console.print()
+
+    # 3) Subagent sections (compact) — below Task List
+    for sa in state.subagents:
+        if sa.tool_calls or not sa.is_active:
+            for elem in _render_subagent_section(sa, compact=True):
+                console.print(elem)
+
+    # 4) Response
+    if state.response_text:
+        clean = state.response_text.rstrip()
+        while clean.endswith("\n...") or clean.rstrip() == "...":
+            clean = clean.rstrip().removesuffix("...").rstrip()
+        console.print()
+        console.print(Markdown(clean or state.response_text))
+        console.print()
+
+    return state.response_text or ""
