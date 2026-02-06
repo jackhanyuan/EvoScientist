@@ -545,9 +545,10 @@ def cmd_interactive(
         _print_separator()
         console.print()
 
-        # Build channel callbacks for intermediate messages (thinking + todo)
+        # Build channel callbacks for intermediate messages (thinking + todo + files)
         on_thinking = None
         on_todo = None
+        on_file_write = None
         if _ChannelState.is_running() and _ChannelState.server and _ChannelState.loop:
             def _send_thinking(thinking_text: str) -> None:
                 try:
@@ -577,14 +578,28 @@ def cmd_interactive(
                 except Exception:
                     pass  # Non-critical — don't break main flow
 
+            def _send_file(real_path: str) -> None:
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        _ChannelState.server.channel.send_media(
+                            recipient=msg.sender, file_path=real_path,
+                            metadata=msg.metadata,
+                        ),
+                        _ChannelState.loop,
+                    )
+                except Exception:
+                    pass  # Non-critical — don't break main flow
+
             on_thinking = _send_thinking
             on_todo = _send_todo
+            on_file_write = _send_file
 
         try:
             # Use SAME _run_streaming as CLI input — full Live experience
             response_text = _run_streaming(
                 state["agent"], msg.content, state["thread_id"], show_thinking,
                 interactive=True, on_thinking=on_thinking, on_todo=on_todo,
+                on_file_write=on_file_write,
             )
 
             # Set response for channel handler to retrieve

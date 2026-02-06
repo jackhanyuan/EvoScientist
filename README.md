@@ -169,6 +169,8 @@ EvoSci # or EvoScientist
 -p, --prompt <q>   Single-shot mode: execute query and exit
 ```
 
+![demo](./assets/cli_help.png)
+
 **Configuration commands:**
 
 ```Shell
@@ -188,6 +190,7 @@ EvoSci config path            # Show config file path
 | `/exit` | Quit the session |
 | `/new` | Start a new session (new workspace + thread) |
 | `/thread` | Show current thread ID and workspace path |
+| `/channel` | Start iMessage channel (shares agent session) |
 | `/skills` | List installed user skills |
 | `/install-skill <source>` | Install a skill from local path or GitHub |
 | `/uninstall-skill <name>` | Uninstall a user-installed skill |
@@ -204,6 +207,25 @@ EvoSci config path            # Show config file path
 # Install from GitHub shorthand
 /install-skill owner/repo@skill-name
 ```
+
+### iMessage Channel
+
+EvoScientist can be controlled remotely via iMessage. The channel shares the same agent and conversation thread as the CLI — messages from your phone go through the same session.
+
+```Shell
+# Enable during onboard
+EvoSci onboard        # Step 7 configures iMessage
+
+# Or enable manually
+EvoSci config set imessage_enabled true
+EvoSci config set imessage_allowed_senders "+1234567890"
+```
+
+The channel can also be started manually with `/channel` in the interactive CLI.
+
+**Features:**
+- Thinking content and todo lists are forwarded to iMessage as intermediate messages
+- Media files (images, PDFs) are auto-sent when the agent writes (`write_file`) or views (`view_image`) them — no extra commands needed
 
 ### Runtime Directories
 

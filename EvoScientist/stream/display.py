@@ -17,6 +17,7 @@ from rich.panel import Panel  # type: ignore[import-untyped]
 from rich.spinner import Spinner  # type: ignore[import-untyped]
 from rich.text import Text  # type: ignore[import-untyped]
 
+from ..paths import resolve_virtual_path
 from .formatter import ToolResultFormatter
 from .state import StreamState, SubAgentState, _build_todo_stats, _parse_todo_items
 from .utils import DisplayLimits, ToolStatus, format_tool_compact, is_success
@@ -25,6 +26,9 @@ from .events import stream_agent_events
 # ---------------------------------------------------------------------------
 # Shared globals
 # ---------------------------------------------------------------------------
+
+# Media file extensions that should trigger on_file_write callback
+_MEDIA_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".pdf"}
 
 console = Console(
     legacy_windows=(sys.platform == 'win32'),
@@ -581,6 +585,7 @@ def _run_streaming(
     interactive: bool,
     on_thinking: Callable[[str], None] | None = None,
     on_todo: Callable[[list[dict]], None] | None = None,
+    on_file_write: Callable[[str], None] | None = None,
 ) -> str:
     """Run async streaming and render with Rich Live display.
 
@@ -597,6 +602,8 @@ def _run_streaming(
             and accumulated thinking >= 200 chars.
         on_todo: Optional sync callback receiving todo items list.
             Called once when write_todos tool_call is detected.
+        on_file_write: Optional sync callback receiving the real filesystem path
+            when the agent writes a media file (image/pdf) via write_file.
 
     Returns:
         The final response text.
@@ -635,6 +642,40 @@ def _run_streaming(
                     _thinking_sent = True
                 on_todo(state.todo_items)
                 _todo_sent = True
+
+            # Send media file to channel when write_file succeeds
+            if (on_file_write
+                    and event_type == "tool_result"
+                    and event.get("name") == "write_file"
+                    and event.get("success")):
+                wf_path = ""
+                for tc in reversed(state.tool_calls):
+                    if tc.get("name") == "write_file":
+                        wf_path = tc.get("args", {}).get("path", "")
+                        break
+                if wf_path:
+                    ext = os.path.splitext(wf_path)[1].lower()
+                    if ext in _MEDIA_EXTENSIONS:
+                        real_path = str(resolve_virtual_path(wf_path))
+                        if os.path.isfile(real_path):
+                            on_file_write(real_path)
+
+            # Send media file to channel when view_image succeeds
+            if (on_file_write
+                    and event_type == "tool_result"
+                    and event.get("name") == "view_image"
+                    and event.get("success")):
+                vi_path = ""
+                for tc in reversed(state.tool_calls):
+                    if tc.get("name") == "view_image":
+                        vi_path = tc.get("args", {}).get("image_path", "")
+                        break
+                if vi_path:
+                    real_path = vi_path
+                    if not os.path.isfile(real_path):
+                        real_path = str(resolve_virtual_path(vi_path))
+                    if os.path.isfile(real_path):
+                        on_file_write(real_path)
 
             live.update(create_streaming_display(
                 **state.get_display_args(),
