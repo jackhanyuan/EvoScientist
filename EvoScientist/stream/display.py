@@ -349,7 +349,7 @@ def create_streaming_display(
         thinking_title = "Thinking"
         if is_thinking:
             thinking_title += " ..."
-        display_thinking = thinking_text
+        display_thinking = thinking_text.rstrip()
         if len(display_thinking) > DisplayLimits.THINKING_STREAM:
             display_thinking = "..." + display_thinking[-DisplayLimits.THINKING_STREAM:]
         elements.append(Panel(
@@ -481,7 +481,7 @@ def display_final_results(
 ) -> None:
     """Display final results after streaming completes."""
     if show_thinking and state.thinking_text:
-        display_thinking = state.thinking_text
+        display_thinking = state.thinking_text.rstrip()
         if len(display_thinking) > thinking_max_length:
             half = thinking_max_length // 2
             display_thinking = display_thinking[:half] + "\n\n... (truncated) ...\n\n" + display_thinking[-half:]
@@ -626,7 +626,7 @@ def _run_streaming(
                     and state.thinking_text
                     and event_type != "thinking"
                     and len(state.thinking_text) >= _MIN_THINKING_LEN):
-                on_thinking(state.thinking_text)
+                on_thinking(state.thinking_text.rstrip())
                 _thinking_sent = True
 
             # Send todo list to channel on first write_todos tool_call
@@ -638,7 +638,7 @@ def _run_streaming(
                 if (on_thinking and not _thinking_sent
                         and state.thinking_text
                         and len(state.thinking_text) >= _MIN_THINKING_LEN):
-                    on_thinking(state.thinking_text)
+                    on_thinking(state.thinking_text.rstrip())
                     _thinking_sent = True
                 on_todo(state.todo_items)
                 _todo_sent = True
@@ -700,7 +700,7 @@ def _run_streaming(
     # Flush any remaining thinking that wasn't sent during streaming
     if on_thinking and not _thinking_sent and state.thinking_text:
         if len(state.thinking_text) >= _MIN_THINKING_LEN:
-            on_thinking(state.thinking_text)
+            on_thinking(state.thinking_text.rstrip())
 
     if interactive:
         display_final_results(
@@ -770,7 +770,7 @@ async def _astream_to_console(
 
     # Thinking
     if show_thinking and state.thinking_text:
-        dt = state.thinking_text
+        dt = state.thinking_text.rstrip()
         if len(dt) > 500:
             dt = dt[:250] + "\n\u2026truncated\u2026\n" + dt[-250:]
         console.print(Panel(Text(dt, style="dim"), title="Thinking", border_style="blue"))
