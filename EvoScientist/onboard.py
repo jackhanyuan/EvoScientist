@@ -992,7 +992,17 @@ def _step_mcp_servers() -> list[str]:
         if srv["name"] in selected
     )
     if needs_npx:
-        _ensure_npx("some MCP servers require Node.js")
+        if not _ensure_npx("some MCP servers require Node.js"):
+            npx_servers = {
+                srv["name"]
+                for srv in _RECOMMENDED_MCP_SERVERS
+                if srv["name"] in selected and srv.get("command") == "npx"
+            }
+            selected = [s for s in selected if s not in npx_servers]
+            if npx_servers:
+                console.print(f"  [yellow]\u26a0 Skipping {', '.join(sorted(npx_servers))} (npx not available)[/yellow]")
+            if not selected:
+                return []
 
     installed = []
     for name in selected:

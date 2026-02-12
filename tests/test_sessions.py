@@ -229,6 +229,59 @@ class TestThreadFunctions(unittest.TestCase):
         # Should not delete OtherAgent's data
         self.assertFalse(_run(delete_thread("zzz99999")))
 
+    def test_delete_thread_preserves_other_agent_writes(self):
+        """Deleting a shared thread_id must only remove writes linked to
+        EvoScientist checkpoints, leaving OtherAgent's writes intact."""
+
+        shared_tid = "shared01"
+
+        async def _insert():
+            import aiosqlite
+            async with aiosqlite.connect(self._db_path) as conn:
+                # EvoScientist checkpoint + write
+                evo_meta = json.dumps({"agent_name": AGENT_NAME, "updated_at": "2025-02-01T00:00:00+00:00"})
+                await conn.execute(
+                    "INSERT INTO checkpoints (thread_id, checkpoint_ns, checkpoint_id, metadata) VALUES (?, '', ?, ?)",
+                    (shared_tid, "cp_evo_shared", evo_meta),
+                )
+                await conn.execute(
+                    "INSERT INTO writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob) "
+                    "VALUES (?, '', ?, 't1', 0, 'ch', 'str', X'AA')",
+                    (shared_tid, "cp_evo_shared"),
+                )
+
+                # OtherAgent checkpoint + write on the SAME thread_id
+                other_meta = json.dumps({"agent_name": "OtherAgent", "updated_at": "2025-02-01T00:00:00+00:00"})
+                await conn.execute(
+                    "INSERT INTO checkpoints (thread_id, checkpoint_ns, checkpoint_id, metadata) VALUES (?, '', ?, ?)",
+                    (shared_tid, "cp_other_shared", other_meta),
+                )
+                await conn.execute(
+                    "INSERT INTO writes (thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, blob) "
+                    "VALUES (?, '', ?, 't2', 0, 'ch', 'str', X'BB')",
+                    (shared_tid, "cp_other_shared"),
+                )
+                await conn.commit()
+
+        _run(_insert())
+
+        # Delete — should only affect EvoScientist's data
+        _run(delete_thread(shared_tid))
+
+        # Verify OtherAgent's writes survive
+        async def _check():
+            import aiosqlite
+            async with aiosqlite.connect(self._db_path) as conn:
+                async with conn.execute(
+                    "SELECT checkpoint_id FROM writes WHERE thread_id = ?", (shared_tid,)
+                ) as cur:
+                    rows = await cur.fetchall()
+                return [r[0] for r in rows]
+
+        remaining = _run(_check())
+        self.assertIn("cp_other_shared", remaining)
+        self.assertNotIn("cp_evo_shared", remaining)
+
 
 if __name__ == "__main__":
     unittest.main()

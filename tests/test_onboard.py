@@ -584,6 +584,50 @@ class TestStepChannels:
                 _step_channels(config)
 
 
+class TestStepMcpServersNpxFailure:
+    def test_npx_failure_skips_npx_servers(self):
+        """When _ensure_npx returns False, npx-dependent servers must be skipped."""
+        from EvoScientist.onboard import _step_mcp_servers, _RECOMMENDED_MCP_SERVERS
+
+        # Pick server names: one npx-based, one non-npx (URL-based)
+        npx_name = next(s["name"] for s in _RECOMMENDED_MCP_SERVERS if s.get("command") == "npx")
+        url_name = next(s["name"] for s in _RECOMMENDED_MCP_SERVERS if "url" in s)
+
+        with mock.patch("EvoScientist.onboard._checkbox_ask", return_value=[npx_name, url_name]), \
+             mock.patch("EvoScientist.onboard._ensure_npx", return_value=False), \
+             mock.patch("EvoScientist.onboard._check_npx", return_value=False), \
+             mock.patch("EvoScientist.mcp.client._load_user_config", return_value={}), \
+             mock.patch("EvoScientist.mcp.client.add_mcp_server") as mock_add, \
+             mock.patch("EvoScientist.onboard.console"):
+            result = _step_mcp_servers()
+
+        # The npx server must NOT have been added
+        added_names = [call.args[0] for call in mock_add.call_args_list]
+        assert npx_name not in added_names
+        # The URL server should still be added
+        assert url_name in added_names
+        assert url_name in result
+        assert npx_name not in result
+
+    def test_npx_failure_returns_empty_when_all_npx(self):
+        """When all selected servers are npx-based and npx fails, return []."""
+        from EvoScientist.onboard import _step_mcp_servers, _RECOMMENDED_MCP_SERVERS
+
+        npx_names = [s["name"] for s in _RECOMMENDED_MCP_SERVERS if s.get("command") == "npx"]
+        assert len(npx_names) >= 1, "Test requires at least one npx server"
+
+        with mock.patch("EvoScientist.onboard._checkbox_ask", return_value=npx_names), \
+             mock.patch("EvoScientist.onboard._ensure_npx", return_value=False), \
+             mock.patch("EvoScientist.onboard._check_npx", return_value=False), \
+             mock.patch("EvoScientist.mcp.client._load_user_config", return_value={}), \
+             mock.patch("EvoScientist.mcp.client.add_mcp_server") as mock_add, \
+             mock.patch("EvoScientist.onboard.console"):
+            result = _step_mcp_servers()
+
+        assert result == []
+        mock_add.assert_not_called()
+
+
 class TestStepParameters:
     def test_returns_parameters(self):
         """Test parameters step returns all values."""

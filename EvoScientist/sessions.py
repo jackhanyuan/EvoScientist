@@ -268,13 +268,23 @@ async def delete_thread(thread_id: str) -> bool:
     async with aiosqlite.connect(db_path, timeout=30.0) as conn:
         if not await _table_exists(conn, "checkpoints"):
             return False
+        # Delete writes FIRST — the subquery needs checkpoints to still exist
+        if await _table_exists(conn, "writes"):
+            await conn.execute(
+                """DELETE FROM writes
+                   WHERE thread_id = ?
+                     AND checkpoint_id IN (
+                         SELECT checkpoint_id FROM checkpoints
+                         WHERE thread_id = ?
+                           AND json_extract(metadata, '$.agent_name') = ?
+                     )""",
+                (thread_id, thread_id, AGENT_NAME),
+            )
         cur = await conn.execute(
             "DELETE FROM checkpoints WHERE thread_id = ? AND json_extract(metadata, '$.agent_name') = ?",
             (thread_id, AGENT_NAME),
         )
         deleted = cur.rowcount > 0
-        if await _table_exists(conn, "writes"):
-            await conn.execute("DELETE FROM writes WHERE thread_id = ?", (thread_id,))
         await conn.commit()
         return deleted
 

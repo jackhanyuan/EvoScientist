@@ -302,8 +302,7 @@ def _merge_memory(existing_md: str, extracted: dict[str, Any]) -> str:
             if value and value != "null":
                 # Replace the line  "- **Label**: ..." with new value
                 pattern = rf"(- \*\*{label}\*\*: ).*"
-                replacement = rf"\g<1>{value}"
-                result = re.sub(pattern, replacement, result)
+                result = re.sub(pattern, lambda m: m.group(1) + value, result)
 
     # --- Research Preferences ---
     prefs = extracted.get("research_preferences")
@@ -320,8 +319,7 @@ def _merge_memory(existing_md: str, extracted: dict[str, Any]) -> str:
             value = prefs.get(key)
             if value and value != "null":
                 pattern = rf"(- \*\*{label}\*\*: ).*"
-                replacement = rf"\g<1>{value}"
-                result = re.sub(pattern, replacement, result)
+                result = re.sub(pattern, lambda m: m.group(1) + value, result)
 
     # --- Experiment History (append) ---
     exp = extracted.get("experiment_conclusion")
