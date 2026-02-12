@@ -21,19 +21,13 @@ class TestModelsRegistry:
         """Test that MODELS is a dictionary."""
         assert isinstance(MODELS, dict)
 
-    def test_models_has_expected_keys(self):
-        """Test that MODELS contains expected model short names."""
-        expected_keys = [
-            "claude-opus-4-6",
-            "claude-opus-4-5",
-            "claude-sonnet-4-5",
-            "claude-haiku-4-5",
-            "gpt-4o",
-            "gpt-4o-mini",
-            "o1",
-        ]
-        for key in expected_keys:
-            assert key in MODELS, f"Expected model '{key}' not in MODELS"
+    def test_models_has_all_providers(self):
+        """Test that MODELS covers all supported providers."""
+        providers = {p for _, (_, p) in MODELS.items()}
+        assert "anthropic" in providers
+        assert "openai" in providers
+        assert "google-genai" in providers
+        assert "nvidia" in providers
 
     def test_models_values_are_tuples(self):
         """Test that MODELS values are (model_id, provider) tuples."""
@@ -52,9 +46,9 @@ class TestModelsRegistry:
                 assert provider == "anthropic", f"Claude model '{name}' doesn't use anthropic provider"
 
     def test_openai_models_have_openai_provider(self):
-        """Test that gpt/o1 models use openai provider."""
+        """Test that gpt models use openai provider."""
         for name, (model_id, provider) in MODELS.items():
-            if name.startswith(("gpt", "o1")):
+            if name.startswith("gpt"):
                 assert provider == "openai", f"OpenAI model '{name}' doesn't use openai provider"
 
     def test_google_models_have_google_provider(self):
@@ -121,8 +115,8 @@ class TestGetModelInfo:
 
     def test_returns_correct_info(self):
         """Test that get_model_info returns correct info."""
-        model_id, provider = get_model_info("gpt-4o")
-        assert model_id == "gpt-4o"
+        model_id, provider = get_model_info("gpt-5-nano")
+        assert model_id == "gpt-5-nano"
         assert provider == "openai"
 
 
@@ -162,10 +156,10 @@ class TestGetChatModel:
         """Test that get_chat_model resolves OpenAI short names."""
         mock_init.return_value = "mock_model"
 
-        get_chat_model("gpt-4o-mini")
+        get_chat_model("gpt-5-mini")
 
         call_kwargs = mock_init.call_args[1]
-        assert call_kwargs["model"] == "gpt-4o-mini"
+        assert call_kwargs["model"] == "gpt-5-mini"
         assert call_kwargs["model_provider"] == "openai"
 
     @mock.patch("EvoScientist.llm.models.init_chat_model")
@@ -195,7 +189,7 @@ class TestGetChatModel:
         """Test that additional kwargs are passed through."""
         mock_init.return_value = "mock_model"
 
-        get_chat_model("gpt-4o", temperature=0.7, max_tokens=1000)
+        get_chat_model("gpt-5-nano", temperature=0.7, max_tokens=1000)
 
         call_kwargs = mock_init.call_args[1]
         assert call_kwargs["temperature"] == 0.7
@@ -240,3 +234,4 @@ class TestGetChatModel:
 
         call_kwargs = mock_init.call_args[1]
         assert call_kwargs["model_provider"] == "anthropic"
+

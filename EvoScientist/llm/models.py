@@ -19,10 +19,12 @@ MODELS: dict[str, tuple[str, str]] = {
     "claude-sonnet-4-5": ("claude-sonnet-4-5-20250929", "anthropic"),
     "claude-haiku-4-5": ("claude-haiku-4-5-20251001", "anthropic"),
     # OpenAI
-    "gpt-4o": ("gpt-4o", "openai"),
-    "gpt-4o-mini": ("gpt-4o-mini", "openai"),
-    "o1": ("o1", "openai"),
-    "o1-mini": ("o1-mini", "openai"),
+    "gpt-5.2-codex": ("gpt-5.2-codex", "openai"),
+    "gpt-5.2": ("gpt-5.2", "openai"),
+    "gpt-5.1": ("gpt-5.1", "openai"),
+    "gpt-5": ("gpt-5", "openai"),
+    "gpt-5-mini": ("gpt-5-mini", "openai"),
+    "gpt-5-nano": ("gpt-5-nano", "openai"),
     # Google GenAI
     "gemini-3-pro": ("gemini-3-pro-preview", "google-genai"),
     "gemini-3-flash": ("gemini-3-flash-preview", "google-genai"),
@@ -86,6 +88,10 @@ def get_chat_model(
     # Auto-enable thinking for Anthropic models
     if provider == "anthropic" and "thinking" not in kwargs:
         kwargs["thinking"] = {"type": "enabled", "budget_tokens": 2000}
+
+    # Auto-enable reasoning for OpenAI models
+    if provider == "openai" and "reasoning" not in kwargs:
+        kwargs["reasoning"] = {"effort": "medium", "summary": "auto"}
 
     # Auto-enable thinking visibility for Google GenAI models
     if provider == "google-genai":
