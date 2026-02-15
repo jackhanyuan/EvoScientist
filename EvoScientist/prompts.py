@@ -279,7 +279,3 @@ def get_system_prompt(max_concurrent: int = 3, max_iterations: int = 3) -> str:
         max_iterations=max_iterations,
     )
     return EXPERIMENT_WORKFLOW + "\n" + delegation
-
-
-# Default export (backward compatible)
-SYSTEM_PROMPT = get_system_prompt()

@@ -19,7 +19,6 @@ from .targets import (
     IMessageTarget,
     IMessageService,
 )
-from ..channel_manager import register_channel, _parse_csv
 
 __all__ = [
     "IMessageChannel",
@@ -32,11 +31,3 @@ __all__ = [
     "IMessageTarget",
     "IMessageService",
 ]
-
-
-def create_from_config(config) -> IMessageChannel:
-    allowed = _parse_csv(config.imessage_allowed_senders)
-    return IMessageChannel(IMessageConfig(allowed_senders=allowed))
-
-
-register_channel("imessage", create_from_config)

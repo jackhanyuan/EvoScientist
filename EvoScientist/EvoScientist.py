@@ -27,7 +27,7 @@ from .mcp import load_mcp_tools
 from .middleware import create_memory_middleware
 from .prompts import RESEARCHER_INSTRUCTIONS, get_system_prompt
 from .utils import load_subagents
-from .tools import tavily_search, think_tool, skill_manager, view_image
+from .tools import tavily_search, think_tool, skill_manager
 from . import paths as _paths_mod
 from .paths import set_active_workspace, set_workspace_root
 
@@ -110,11 +110,10 @@ backend = CompositeBackend(
 tool_registry = {
     "think_tool": think_tool,
     "tavily_search": tavily_search,
-    "view_image": view_image,
 }
 
 # Base tools that every agent variant gets (before MCP)
-BASE_TOOLS = [think_tool, skill_manager, view_image]
+BASE_TOOLS = [think_tool, skill_manager]
 
 # Cache MCP tools by the effective config signature to avoid reconnecting
 # to MCP servers on every `/new` when config is unchanged.

@@ -15,8 +15,6 @@ build/
 .venv/
 venv/
 uv.lock
-bridge/node_modules/
-bridge/package-lock.json
 
 # IDE / Tools
 .vscode/
@@ -38,4 +36,3 @@ memory/
 *CLAUDE.md
 *AGENTS.md
 *meals/
-botpy.log
