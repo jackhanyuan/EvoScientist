@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 import asyncio
 import logging
 import re
-from collections import defaultdict
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable as CallableABC
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -302,8 +302,10 @@ class Channel(ChannelPlugin, ABC):
         from .retry import RetryConfig, DEFAULT_RETRY, RETRY_PRESETS
         self._retry_config: RetryConfig = RETRY_PRESETS.get(self.name, DEFAULT_RETRY)
 
-        # Per-chat send locks to prevent message reordering
-        self._send_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        # Per-chat send locks to prevent message reordering.
+        # Uses an OrderedDict as a bounded LRU cache to avoid unbounded growth.
+        self._send_locks: OrderedDict[str, asyncio.Lock] = OrderedDict()
+        self._send_locks_max: int = 1024
 
         # Build inbound middleware pipeline
         self._inbound_middlewares = self._build_inbound_middlewares()
@@ -415,6 +417,25 @@ class Channel(ChannelPlugin, ABC):
             except asyncio.TimeoutError:
                 continue
 
+    def _acquire_send_lock(self, chat_id: str) -> asyncio.Lock:
+        """Get or create a per-chat send lock with LRU eviction.
+
+        Moves the accessed entry to the end (most-recently-used).
+        When the cache exceeds ``_send_locks_max``, the least-recently-used
+        entry is evicted — but only if its lock is not currently held.
+        """
+        if chat_id in self._send_locks:
+            self._send_locks.move_to_end(chat_id)
+        else:
+            self._send_locks[chat_id] = asyncio.Lock()
+            # Evict oldest unlocked entries when over capacity
+            while len(self._send_locks) > self._send_locks_max:
+                oldest_key, oldest_lock = next(iter(self._send_locks.items()))
+                if oldest_lock.locked():
+                    break  # don't evict a lock that's in use
+                del self._send_locks[oldest_key]
+        return self._send_locks[chat_id]
+
     async def send(self, message: OutboundMessage) -> bool:
         """Send a message. Handles chunking, retry, and error logging.
 
@@ -436,7 +457,7 @@ class Channel(ChannelPlugin, ABC):
         try:
             chat_id = self._resolve_chat_id(message)
             limit = self._get_chunk_limit()
-            async with self._send_locks[chat_id]:
+            async with self._acquire_send_lock(chat_id):
                 pairs = self._prepare_chunks(message.content, limit)
                 had_error = False
                 for i, (formatted, raw) in enumerate(pairs):
