@@ -13,6 +13,17 @@ from .agent import _deduplicate_run_name  # noqa: F401
 from ._app import app  # noqa: F401
 from . import commands  # noqa: F401 — registers @app.command decorators
 
+# UI runtime re-exports (merged from former tui/ package)
+from .tui_runtime import (  # noqa: F401
+    DEFAULT_UI_BACKEND,
+    SUPPORTED_UI_BACKENDS,
+    normalize_ui_backend,
+    resolve_ui_backend,
+    get_backend,
+    run_streaming,
+)
+from ._constants import WELCOME_SLOGANS  # noqa: F401
+
 
 def main():
     """CLI entry point."""

@@ -1,0 +1,174 @@
+"""Tool call widget with status lifecycle and collapsible output."""
+
+from __future__ import annotations
+
+from rich.text import Text
+
+from textual.containers import Vertical
+from textual.widgets import Static
+
+from ...stream.utils import format_tool_compact
+
+_SPINNER_FRAMES = "\u280b\u2819\u2839\u2838\u283c\u2834\u2826\u2827\u2807\u280f"
+
+# Output is collapsed when it exceeds these limits
+_COLLAPSE_LINES = 6
+_COLLAPSE_CHARS = 400
+
+
+class ToolCallWidget(Vertical):
+    """Displays a single tool call with running spinner → result.
+
+    Lifecycle: ``running`` → ``success`` | ``error``
+
+    Usage::
+
+        w = ToolCallWidget("read_file", {"path": "/foo.py"}, tool_id="abc")
+        await container.mount(w)
+        # ... later ...
+        w.set_success("[OK] 42 lines")
+    """
+
+    DEFAULT_CSS = """
+    ToolCallWidget {
+        height: auto;
+        padding: 0 0;
+    }
+    ToolCallWidget .tool-header {
+        height: auto;
+    }
+    ToolCallWidget .tool-status {
+        height: auto;
+        padding: 0 0 0 2;
+    }
+    ToolCallWidget .tool-output {
+        height: auto;
+        padding: 0 0 0 4;
+        color: #9ca3af;
+        display: none;
+    }
+    ToolCallWidget .tool-output.--visible {
+        display: block;
+    }
+    """
+
+    def __init__(
+        self,
+        tool_name: str,
+        tool_args: dict | None = None,
+        tool_id: str = "",
+    ) -> None:
+        super().__init__()
+        self._tool_name = tool_name
+        self._tool_args = tool_args or {}
+        self._tool_id = tool_id
+        self._status = "running"
+        self._result_content = ""
+        self._frame = 0
+        self._elapsed = 0.0
+        self._timer_handle = None
+        self._collapsed = True
+
+    @property
+    def tool_id(self) -> str:
+        return self._tool_id
+
+    @property
+    def tool_name(self) -> str:
+        return self._tool_name
+
+    def compose(self):
+        yield Static("", classes="tool-header")
+        yield Static("", classes="tool-status")
+        yield Static("", classes="tool-output")
+
+    def on_mount(self) -> None:
+        self._timer_handle = self.set_interval(0.1, self._tick)
+        self._render_header()
+        self._render_status()
+
+    def _tick(self) -> None:
+        if self._status == "running":
+            self._frame = (self._frame + 1) % len(_SPINNER_FRAMES)
+            self._elapsed += 0.1
+            self._render_status()
+
+    def _render_header(self) -> None:
+        compact = format_tool_compact(self._tool_name, self._tool_args)
+        header = self.query_one(".tool-header", Static)
+        line = Text()
+        if self._status == "running":
+            line.append("\u25cf ", style="bold yellow")
+            line.append(compact, style="bold yellow")
+        elif self._status == "success":
+            line.append("\u2713 ", style="bold green")
+            line.append(compact, style="bold green")
+        else:
+            line.append("\u2717 ", style="bold red")
+            line.append(compact, style="bold red")
+        header.update(line)
+
+    def _render_status(self) -> None:
+        status_w = self.query_one(".tool-status", Static)
+        if self._status == "running":
+            char = _SPINNER_FRAMES[self._frame]
+            secs = int(self._elapsed)
+            status_w.update(Text(f"{char} Running... ({secs}s)", style="yellow dim"))
+        elif self._status == "success":
+            # Show first line of result as summary
+            summary = self._result_summary()
+            status_w.update(Text(f"\u2713 {summary}", style="green dim"))
+        else:
+            summary = self._result_summary()
+            status_w.update(Text(f"\u2717 {summary}", style="red dim"))
+
+    def _result_summary(self) -> str:
+        """One-line summary of the result."""
+        if not self._result_content:
+            return "done"
+        first_line = self._result_content.strip().split("\n")[0]
+        if len(first_line) > 60:
+            first_line = first_line[:57] + "\u2026"
+        return first_line
+
+    def _should_collapse(self) -> bool:
+        lines = self._result_content.strip().split("\n")
+        return len(lines) > _COLLAPSE_LINES or len(self._result_content) > _COLLAPSE_CHARS
+
+    def set_success(self, content: str) -> None:
+        """Mark tool call as successfully completed."""
+        self._status = "success"
+        self._result_content = content
+        self._stop_timer()
+        self._render_header()
+        self._render_status()
+        self._render_output()
+
+    def set_error(self, content: str) -> None:
+        """Mark tool call as failed."""
+        self._status = "error"
+        self._result_content = content
+        self._stop_timer()
+        self._render_header()
+        self._render_status()
+        self._render_output()
+
+    def _render_output(self) -> None:
+        output_w = self.query_one(".tool-output", Static)
+        if not self._result_content.strip():
+            return
+        if self._status == "error" or not self._should_collapse():
+            # Show full output for errors or short output
+            style = "red dim" if self._status == "error" else "dim"
+            content = self._result_content.strip()
+            if len(content) > 800:
+                content = content[:800] + "\n... (truncated)"
+            output_w.update(Text(content, style=style))
+            output_w.add_class("--visible")
+        # Otherwise collapsed — user can click to expand
+        # (click handling left for future enhancement)
+
+    def _stop_timer(self) -> None:
+        if self._timer_handle is not None:
+            self._timer_handle.stop()
+            self._timer_handle = None

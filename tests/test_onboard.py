@@ -22,10 +22,10 @@ from EvoScientist.config import EvoScientistConfig
 
 
 class TestConstants:
-    def test_steps_has_nine_items(self):
-        """Test that STEPS contains exactly 9 steps."""
-        assert len(STEPS) == 9
-        assert STEPS == ["Provider", "API Key", "Model", "Tavily Key", "Workspace", "Parameters", "Skills", "MCP Servers", "Channels"]
+    def test_steps_has_ten_items(self):
+        """Test that STEPS contains exactly 10 steps."""
+        assert len(STEPS) == 10
+        assert STEPS == ["UI", "Provider", "API Key", "Model", "Tavily Key", "Workspace", "Parameters", "Skills", "MCP Servers", "Channels"]
 
     def test_wizard_style_is_style_instance(self):
         """Test that WIZARD_STYLE is a prompt_toolkit Style."""
@@ -749,6 +749,7 @@ class TestRunOnboard:
 
             # Mock all questionary calls
             mock_q.select.return_value.ask.side_effect = [
+                "rich",  # UI backend
                 "anthropic",  # Provider
                 "claude-sonnet-4-5",  # Model
                 "daemon",  # Workspace mode
@@ -801,6 +802,7 @@ class TestRunOnboard:
             mock_load.return_value = EvoScientistConfig()
 
             mock_q.select.return_value.ask.side_effect = [
+                "rich",  # UI backend
                 "anthropic",
                 "claude-sonnet-4-5",
                 "daemon",

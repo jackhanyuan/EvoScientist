@@ -35,6 +35,7 @@ dependencies = [
     "markdownify>=0.14",
     "nest-asyncio>=1.6",
     "langchain-mcp-adapters>=0.1",
+    "textual>=0.80",
 ]
 
 [project.optional-dependencies]

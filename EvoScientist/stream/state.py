@@ -7,6 +7,10 @@ No Rich dependencies — stdlib only.
 import ast
 import json
 
+# Tool names that are internal middleware artifacts (not user-visible actions).
+# These should be excluded from display rendering and "all_done" calculations.
+_INTERNAL_TOOLS = {"ExtractedMemory"}
+
 
 class SubAgentState:
     """Tracks a single sub-agent's activity."""
@@ -186,8 +190,9 @@ class StreamState:
                     self.todo_items = todos
 
         elif event_type == "tool_result":
-            self.is_processing = True
             result_name = event.get("name", "unknown")
+            if result_name not in _INTERNAL_TOOLS:
+                self.is_processing = True
             result_content = event.get("content", "")
             self.tool_results.append({
                 "name": result_name,

@@ -173,8 +173,13 @@ EvoSci # or EvoScientist
 --use-cwd          Use current working directory as workspace
 --thread-id <id>   Resume a conversation thread
 --no-thinking      Disable thinking display
+--ui <backend>     UI backend: rich (default) or textual (beta)
 -p, --prompt <q>   Single-shot mode: execute query and exit
 ```
+
+> [!NOTE]
+> In `--ui textual` mode, the built-in TUI commands are:
+> `/help`, `/current`, `/new`, `/clear`, `/threads`, `/resume <id>`, `/delete <id>`, `/exit`.
 
 ![demo](./assets/EvoScientist_cli_help.png)
 
@@ -196,7 +201,7 @@ EvoSci config path            # Show config file path
 |---------|-------------|
 | `/exit` | Quit the session |
 | `/new` | Start a new session (new workspace + thread) |
-| `/thread` | Show current thread ID and workspace path |
+| `/current` | Show current thread ID and workspace path |
 | `/channel` | Start iMessage channel (shares agent session) |
 | `/skills` | List installed user skills |
 | `/install-skill <source>` | Install a skill from local path or GitHub |

@@ -4,8 +4,8 @@ import asyncio
 import logging
 import os
 import queue
+import random
 import sys
-from datetime import datetime, timezone
 from typing import Any
 
 import typer  # type: ignore[import-untyped]
@@ -29,9 +29,11 @@ from ..sessions import (
     get_thread_metadata,
     get_thread_messages,
     _format_relative_time,
-    AGENT_NAME,
 )
-from ..stream.display import console, _run_streaming
+from ..stream.display import console
+from .tui_runtime import run_streaming, resolve_ui_backend
+from .tui_interactive import run_textual_interactive
+from ._constants import WELCOME_SLOGANS, LOGO_LINES, LOGO_GRADIENT, build_metadata
 from .agent import _shorten_path, _create_session_workspace, _load_agent
 from .channel import (
     ChannelMessage,
@@ -53,24 +55,6 @@ _channel_logger = logging.getLogger(__name__)
 # Banner
 # =============================================================================
 
-EVOSCIENTIST_ASCII_LINES = [
-    r" \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2557   \u2588\u2588\u2557  \u2588\u2588\u2588\u2588\u2588\u2588\u2557  \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557  \u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2557   \u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557",
-]
-
-# Blue gradient: deep navy -> royal blue -> sky blue -> cyan
-_GRADIENT_COLORS = ["#1a237e", "#1565c0", "#1e88e5", "#42a5f5", "#64b5f6", "#90caf9"]
-
-# Keep the real ASCII art lines (raw strings) rather than the escaped version above
-_REAL_ASCII_LINES = [
-    r" ███████╗ ██╗   ██╗  ██████╗  ███████╗  ██████╗ ██╗ ███████╗ ███╗   ██╗ ████████╗ ██╗ ███████╗ ████████╗",
-    r" ██╔════╝ ██║   ██║ ██╔═══██╗ ██╔════╝ ██╔════╝ ██║ ██╔════╝ ████╗  ██║ ╚══██╔══╝ ██║ ██╔════╝ ╚══██╔══╝",
-    r" █████╗   ██║   ██║ ██║   ██║ ███████╗ ██║      ██║ █████╗   ██╔██╗ ██║    ██║    ██║ ███████╗    ██║   ",
-    r" ██╔══╝   ╚██╗ ██╔╝ ██║   ██║ ╚════██║ ██║      ██║ ██╔══╝   ██║╚██╗██║    ██║    ██║ ╚════██║    ██║   ",
-    r" ███████╗  ╚████╔╝  ╚██████╔╝ ███████║ ╚██████╗ ██║ ███████╗ ██║ ╚████║    ██║    ██║ ███████║    ██║   ",
-    r" ╚══════╝   ╚═══╝    ╚═════╝  ╚══════╝  ╚═════╝ ╚═╝ ╚══════╝ ╚═╝  ╚═══╝    ╚═╝    ╚═╝ ╚══════╝    ╚═╝   ",
-]
-
-
 def print_banner(
     thread_id: str,
     workspace_dir: str | None = None,
@@ -78,29 +62,32 @@ def print_banner(
     mode: str | None = None,
     model: str | None = None,
     provider: str | None = None,
+    ui_backend: str | None = None,
 ):
-    """Print welcome banner with ASCII art logo, thread ID, workspace path, and mode."""
-    for line, color in zip(_REAL_ASCII_LINES, _GRADIENT_COLORS):
+    """Print welcome banner with ASCII art logo, info line, and hint."""
+    for line, color in zip(LOGO_LINES, LOGO_GRADIENT):
         console.print(Text(line, style=f"{color} bold"))
     info = Text()
-    if model or provider or mode:
-        info.append("  ", style="dim")
-        parts = []
-        if model:
-            parts.append(("Model: ", model))
-        if provider:
-            parts.append(("Provider: ", provider))
-        if mode:
-            parts.append(("Mode: ", mode))
-        for i, (label, value) in enumerate(parts):
-            if i > 0:
-                info.append("  ", style="dim")
-            info.append(label, style="dim")
-            info.append(value, style="magenta")
+    info.append("  ", style="dim")
+    parts: list[tuple[str, str]] = []
+    if model:
+        parts.append(("Model: ", model))
+    if provider:
+        parts.append(("Provider: ", provider))
+    if mode:
+        parts.append(("Mode: ", mode))
+    if ui_backend:
+        parts.append(("UI: ", ui_backend))
+    for i, (label, value) in enumerate(parts):
+        if i > 0:
+            info.append("  ", style="dim")
+        info.append(label, style="dim")
+        info.append(value, style="magenta")
     info.append("\n  Type ", style="#ffe082")
     info.append("/", style="#ffe082 bold")
     info.append(" for commands", style="#ffe082")
     console.print(info)
+    console.print(Text(f"  {random.choice(WELCOME_SLOGANS)}", style="dim italic"))
     console.print()
 
 
@@ -166,16 +153,6 @@ class SlashCommandCompleter(Completer):
 # =============================================================================
 
 
-def _build_metadata(workspace_dir: str | None, model: str | None) -> dict:
-    """Build metadata dict for LangGraph checkpoint persistence."""
-    return {
-        "agent_name": AGENT_NAME,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "workspace_dir": workspace_dir or "",
-        "model": model or "",
-    }
-
-
 def cmd_interactive(
     show_thinking: bool = True,
     channel_send_thinking: bool = True,
@@ -186,6 +163,7 @@ def cmd_interactive(
     provider: str | None = None,
     run_name: str | None = None,
     thread_id: str | None = None,
+    ui_backend: str = "rich",
 ) -> None:
     """Interactive conversation mode with streaming output.
 
@@ -202,9 +180,27 @@ def cmd_interactive(
         provider: LLM provider name to display in banner
         run_name: Optional run name for /new session deduplication
         thread_id: Optional thread ID to resume a previous session
+        ui_backend: UI backend ('rich' or 'textual')
     """
     import nest_asyncio
     nest_asyncio.apply()
+
+    resolved_ui_backend = resolve_ui_backend(ui_backend, warn_fallback=True)
+    if resolved_ui_backend == "textual":
+        run_textual_interactive(
+            show_thinking=show_thinking,
+            channel_send_thinking=channel_send_thinking,
+            workspace_dir=workspace_dir,
+            workspace_fixed=workspace_fixed,
+            mode=mode,
+            model=model,
+            provider=provider,
+            run_name=run_name,
+            thread_id=thread_id,
+            load_agent=_load_agent,
+            create_session_workspace=_create_session_workspace,
+        )
+        return
 
     from .. import paths
     memory_dir = str(paths.MEMORY_DIR)
@@ -231,6 +227,7 @@ def cmd_interactive(
         "workspace_dir": workspace_dir,
         "running": True,
         "resumed": False,
+        "ui_backend": resolved_ui_backend,
     }
 
     async def _resolve_thread_id(tid: str) -> str | None:
@@ -433,10 +430,26 @@ def cmd_interactive(
 
             # Print banner
             if state["resumed"]:
-                print_banner(state["thread_id"], state["workspace_dir"], memory_dir, mode, model, provider)
+                print_banner(
+                    state["thread_id"],
+                    state["workspace_dir"],
+                    memory_dir,
+                    mode,
+                    model,
+                    provider,
+                    state["ui_backend"],
+                )
                 console.print(f"[green]Resumed session [yellow]{state['thread_id']}[/yellow][/green]\n")
             else:
-                print_banner(state["thread_id"], state["workspace_dir"], memory_dir, mode, model, provider)
+                print_banner(
+                    state["thread_id"],
+                    state["workspace_dir"],
+                    memory_dir,
+                    mode,
+                    model,
+                    provider,
+                    state["ui_backend"],
+                )
 
             # ---- Channel queue processing (bus → main thread) ----
 
@@ -504,11 +517,16 @@ def cmd_interactive(
                             "Media", timeout=30,
                         )
 
-                meta = _build_metadata(state["workspace_dir"], model)
+                meta = build_metadata(state["workspace_dir"], model)
                 try:
-                    response = _run_streaming(
-                        state["agent"], msg.content, state["thread_id"],
-                        show_thinking, interactive=True, metadata=meta,
+                    response = run_streaming(
+                        ui_backend=state["ui_backend"],
+                        agent=state["agent"],
+                        message=msg.content,
+                        thread_id=state["thread_id"],
+                        show_thinking=show_thinking,
+                        interactive=True,
+                        metadata=meta,
                         on_thinking=_send_thinking_to_channel,
                         on_todo=_send_todo_to_channel,
                         on_file_write=_send_media_to_channel,
@@ -611,6 +629,7 @@ def cmd_interactive(
                             console.print(f"[dim]Thread:[/dim] [yellow]{state['thread_id']}[/yellow]")
                             if state["workspace_dir"]:
                                 console.print(f"[dim]Workspace:[/dim] [cyan]{_shorten_path(state['workspace_dir'])}[/cyan]")
+                            console.print(f"[dim]UI:[/dim] [cyan]{state['ui_backend']}[/cyan]")
                             if memory_dir:
                                 console.print(f"[dim]Memory dir:[/dim] [cyan]{_shorten_path(memory_dir)}[/cyan]")
                             console.print()
@@ -650,10 +669,15 @@ def cmd_interactive(
 
                         # Stream agent response with metadata for persistence
                         console.print()
-                        meta = _build_metadata(state["workspace_dir"], model)
-                        _run_streaming(
-                            state["agent"], user_input, state["thread_id"],
-                            show_thinking, interactive=True, metadata=meta,
+                        meta = build_metadata(state["workspace_dir"], model)
+                        run_streaming(
+                            ui_backend=state["ui_backend"],
+                            agent=state["agent"],
+                            message=user_input,
+                            thread_id=state["thread_id"],
+                            show_thinking=show_thinking,
+                            interactive=True,
+                            metadata=meta,
                         )
                         console.print()
                         _print_separator()
@@ -697,6 +721,7 @@ def cmd_run(
     show_thinking: bool = True,
     workspace_dir: str | None = None,
     model: str | None = None,
+    ui_backend: str = "rich",
 ) -> None:
     """Single-shot execution with streaming display.
 
@@ -707,6 +732,7 @@ def cmd_run(
         show_thinking: Whether to display thinking panels
         workspace_dir: Per-session workspace directory path
         model: Model name for checkpoint metadata
+        ui_backend: UI backend ('rich' or 'textual')
     """
     thread_id = thread_id or generate_thread_id()
 
@@ -720,9 +746,17 @@ def cmd_run(
         console.print(f"[dim]Workspace: {_shorten_path(workspace_dir)}[/dim]")
     console.print()
 
-    meta = _build_metadata(workspace_dir, model)
+    meta = build_metadata(workspace_dir, model)
     try:
-        _run_streaming(agent, prompt, thread_id, show_thinking, interactive=False, metadata=meta)
+        run_streaming(
+            ui_backend=resolve_ui_backend(ui_backend, warn_fallback=True),
+            agent=agent,
+            message=prompt,
+            thread_id=thread_id,
+            show_thinking=show_thinking,
+            interactive=False,
+            metadata=meta,
+        )
     except Exception as e:
         error_msg = str(e)
         if "authentication" in error_msg.lower() or "api_key" in error_msg.lower():

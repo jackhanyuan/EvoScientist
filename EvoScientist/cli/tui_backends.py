@@ -1,0 +1,61 @@
+"""TUI backend abstractions for streaming output."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Callable, Protocol
+
+from ..stream.display import _run_streaming
+
+
+class StreamingTUIBackend(Protocol):
+    """Protocol for TUI backends that can render agent streaming output."""
+
+    name: str
+
+    def run_streaming(
+        self,
+        *,
+        agent: Any,
+        message: str,
+        thread_id: str,
+        show_thinking: bool,
+        interactive: bool,
+        on_thinking: Callable[[str], None] | None = None,
+        on_todo: Callable[[list[dict]], None] | None = None,
+        on_file_write: Callable[[str], None] | None = None,
+        metadata: dict | None = None,
+    ) -> str:
+        """Run streaming and return final response text."""
+
+
+@dataclass(slots=True)
+class RichStreamingBackend:
+    """Default Rich backend wrapper around the existing streaming renderer."""
+
+    name: str = "rich"
+
+    def run_streaming(
+        self,
+        *,
+        agent: Any,
+        message: str,
+        thread_id: str,
+        show_thinking: bool,
+        interactive: bool,
+        on_thinking: Callable[[str], None] | None = None,
+        on_todo: Callable[[list[dict]], None] | None = None,
+        on_file_write: Callable[[str], None] | None = None,
+        metadata: dict | None = None,
+    ) -> str:
+        return _run_streaming(
+            agent=agent,
+            message=message,
+            thread_id=thread_id,
+            show_thinking=show_thinking,
+            interactive=interactive,
+            on_thinking=on_thinking,
+            on_todo=on_todo,
+            on_file_write=on_file_write,
+            metadata=metadata,
+        )

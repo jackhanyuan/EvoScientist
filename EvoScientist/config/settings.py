@@ -83,6 +83,7 @@ class EvoScientistConfig:
 
     # UI Settings
     show_thinking: bool = True
+    ui_backend: Literal["rich", "textual"] = "rich"
 
     # Channel Settings
     channel_enabled: str = ""  # "imessage" | "telegram" | "discord" | "slack" | "wechat" | "dingtalk" | "feishu" | "email" | "qq" | "signal" | "" (comma-separated for multiple)
@@ -331,6 +332,7 @@ _ENV_MAPPINGS = {
     "tavily_api_key": "TAVILY_API_KEY",
     "default_mode": "EVOSCIENTIST_DEFAULT_MODE",
     "default_workdir": "EVOSCIENTIST_WORKSPACE_DIR",
+    "ui_backend": "EVOSCIENTIST_UI_BACKEND",
 }
 
 

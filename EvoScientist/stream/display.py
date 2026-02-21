@@ -19,7 +19,7 @@ from rich.text import Text  # type: ignore[import-untyped]
 
 from ..paths import resolve_virtual_path
 from .formatter import ToolResultFormatter
-from .state import StreamState, SubAgentState, _build_todo_stats, _parse_todo_items
+from .state import StreamState, SubAgentState, _build_todo_stats, _parse_todo_items, _INTERNAL_TOOLS
 from .utils import DisplayLimits, ToolStatus, format_tool_compact, is_success
 from .events import stream_agent_events
 
@@ -376,6 +376,10 @@ def create_streaming_display(
             tr = tool_results[i] if has_result else None
             is_task = tc.get('name') == 'task'
 
+            # Skip internal middleware tools
+            if tc.get('name') in _INTERNAL_TOOLS:
+                continue
+
             if is_task:
                 # Skip task calls with empty args (still streaming)
                 if tc.get('args'):
@@ -423,10 +427,19 @@ def create_streaming_display(
 
         # Task tool calls are rendered as part of sub-agent sections below
 
-    # Response text handling
-    has_pending_tools = len(tool_calls) > len(tool_results)
+    # Response text handling — exclude internal tools (e.g. ExtractedMemory)
+    # from the "done" calculation so they don't block final Markdown rendering.
+    _n_visible = 0
+    _n_visible_done = 0
+    for i, tc in enumerate(tool_calls):
+        if tc.get('name') in _INTERNAL_TOOLS:
+            continue
+        _n_visible += 1
+        if i < len(tool_results):
+            _n_visible_done += 1
+    has_pending_tools = _n_visible > _n_visible_done
     any_active_subagent = any(sa.is_active for sa in subagents)
-    has_used_tools = len(tool_calls) > 0
+    has_used_tools = _n_visible > 0
     all_done = not has_pending_tools and not any_active_subagent and not is_processing
 
     # Intermediate narration (tools still running) -- dim italic above Task List
@@ -459,12 +472,12 @@ def create_streaming_display(
             spinner = Spinner("dots", text=" Analyzing results...", style="cyan")
             elements.append(spinner)
 
-    # Final response -- render as Markdown when all work is done
+    # Final response -- render as streaming Markdown whenever all tools are done.
+    # The Live display is transient; display_final_results() re-renders the
+    # permanent output after Live exits, so no visible duplication occurs.
     if response_text and all_done:
         elements.append(Text(""))  # blank separator
         elements.append(Markdown(response_text))
-    elif is_responding and not thinking_text and not has_pending_tools:
-        elements.append(Text("Generating response...", style="dim"))
 
     return Group(*elements) if elements else Text("Processing...", style="dim")
 
@@ -498,7 +511,12 @@ def display_final_results(
             has_result = i < len(state.tool_results)
             tr = state.tool_results[i] if has_result else None
             content = tr.get('content', '') if tr is not None else ''
-            is_task = tc.get('name', '').lower() == 'task'
+            tool_name = tc.get('name', '')
+            is_task = tool_name.lower() == 'task'
+
+            # Skip internal middleware tools
+            if tool_name in _INTERNAL_TOOLS:
+                continue
 
             # Task tools: show delegation line + compact sub-agent summary
             if is_task:

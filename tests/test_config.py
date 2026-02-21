@@ -38,6 +38,7 @@ def temp_config_dir(tmp_path, monkeypatch):
         "TAVILY_API_KEY",
         "EVOSCIENTIST_DEFAULT_MODE",
         "EVOSCIENTIST_WORKSPACE_DIR",
+        "EVOSCIENTIST_UI_BACKEND",
     ]:
         monkeypatch.delenv(key, raising=False)
     return config_dir
@@ -52,6 +53,7 @@ def clean_env(monkeypatch):
         "TAVILY_API_KEY",
         "EVOSCIENTIST_DEFAULT_MODE",
         "EVOSCIENTIST_WORKSPACE_DIR",
+        "EVOSCIENTIST_UI_BACKEND",
     ]:
         monkeypatch.delenv(key, raising=False)
 
@@ -76,6 +78,7 @@ class TestEvoScientistConfig:
         assert config.max_concurrent == 3
         assert config.max_iterations == 3
         assert config.show_thinking is True
+        assert config.ui_backend == "rich"
         assert config.imessage_enabled is False
         assert config.imessage_allowed_senders == ""
 
@@ -280,8 +283,14 @@ class TestPriorityChain:
     def test_defaults_when_nothing_set(self, temp_config_dir, clean_env, monkeypatch):
         """Test defaults are used when nothing is configured."""
         # Ensure no env vars affect the test
-        for key in ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "TAVILY_API_KEY",
-                    "EVOSCIENTIST_DEFAULT_MODE", "EVOSCIENTIST_WORKSPACE_DIR"]:
+        for key in [
+            "ANTHROPIC_API_KEY",
+            "OPENAI_API_KEY",
+            "TAVILY_API_KEY",
+            "EVOSCIENTIST_DEFAULT_MODE",
+            "EVOSCIENTIST_WORKSPACE_DIR",
+            "EVOSCIENTIST_UI_BACKEND",
+        ]:
             monkeypatch.delenv(key, raising=False)
         config = get_effective_config()
         assert config.provider == "anthropic"
@@ -316,6 +325,13 @@ class TestPriorityChain:
 
         config = get_effective_config(cli_overrides={"model": "claude-opus-4-5"})
         assert config.model == "claude-opus-4-5"
+
+    def test_env_ui_backend_override(self, temp_config_dir, monkeypatch):
+        """UI backend can be selected via environment variable."""
+        save_config(EvoScientistConfig(ui_backend="rich"))
+        monkeypatch.setenv("EVOSCIENTIST_UI_BACKEND", "textual")
+        config = get_effective_config()
+        assert config.ui_backend == "textual"
 
     def test_env_api_key_override(self, temp_config_dir, monkeypatch):
         """Test API keys from env override file."""

@@ -408,6 +408,11 @@ def _main_callback(
     workdir: Optional[str] = typer.Option(None, "--workdir", help="Override workspace directory for this session"),
     use_cwd: bool = typer.Option(False, "--use-cwd", help="Use current working directory as workspace"),
     no_thinking: bool = typer.Option(False, "--no-thinking", help="Disable thinking display"),
+    ui: Optional[str] = typer.Option(
+        None,
+        "--ui",
+        help="UI backend: rich (default) or textual (beta).",
+    ),
 ):
     """EvoScientist Agent - AI-powered research & code execution CLI"""
     # If a subcommand was invoked, don't run the default behavior
@@ -429,6 +434,8 @@ def _main_callback(
         cli_overrides["default_workdir"] = workdir
     if no_thinking:
         cli_overrides["show_thinking"] = False
+    if ui:
+        cli_overrides["ui_backend"] = ui
 
     config = get_effective_config(cli_overrides)
     apply_config_to_env(config)
@@ -445,6 +452,8 @@ def _main_callback(
 
     if mode and mode not in ("run", "daemon"):
         raise typer.BadParameter("--mode must be 'run' or 'daemon'")
+    if ui and ui.lower() not in ("rich", "textual"):
+        raise typer.BadParameter("--ui must be 'rich' or 'textual'")
 
     # --name only makes sense in run mode
     if name and not (mode == "run" or (not mode and not workdir and not use_cwd and config.default_mode == "run")):
@@ -523,7 +532,15 @@ def _main_callback(
                 console.print("[dim]Loading agent...[/dim]")
                 agent = _load_agent(workspace_dir=workspace_dir, checkpointer=checkpointer)
                 tid = thread_id or generate_thread_id()
-                cmd_run(agent, prompt, thread_id=tid, show_thinking=show_thinking, workspace_dir=workspace_dir, model=config.model)
+                cmd_run(
+                    agent,
+                    prompt,
+                    thread_id=tid,
+                    show_thinking=show_thinking,
+                    workspace_dir=workspace_dir,
+                    model=config.model,
+                    ui_backend=config.ui_backend,
+                )
 
         import nest_asyncio  # type: ignore[import-untyped]
         nest_asyncio.apply()
@@ -540,6 +557,7 @@ def _main_callback(
             provider=config.provider,
             run_name=name,
             thread_id=thread_id,
+            ui_backend=config.ui_backend,
         )
 
 

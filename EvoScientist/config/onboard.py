@@ -90,7 +90,7 @@ def _checkbox_ask(choices, message: str, **kwargs):
     finally:
         InquirerControl._get_choice_tokens = original
 
-STEPS = ["Provider", "API Key", "Model", "Tavily Key", "Workspace", "Parameters", "Skills", "MCP Servers", "Channels"]
+STEPS = ["UI", "Provider", "API Key", "Model", "Tavily Key", "Workspace", "Parameters", "Skills", "MCP Servers", "Channels"]
 
 
 # =============================================================================
@@ -350,6 +350,35 @@ def _print_step_skipped(step_name: str, reason: str = "kept current") -> None:
 # =============================================================================
 # Step Functions
 # =============================================================================
+
+def _step_ui_backend(config: EvoScientistConfig) -> str:
+    """Step 0: Select UI backend (Rich CLI or Textual TUI).
+
+    Args:
+        config: Current configuration.
+
+    Returns:
+        Selected backend name ("rich" or "textual").
+    """
+    choices = [
+        Choice(title="Rich CLI (classic terminal)", value="rich"),
+        Choice(title="Textual TUI (full-screen interface)", value="textual"),
+    ]
+
+    backend = questionary.select(
+        "Select UI mode:",
+        choices=choices,
+        default=config.ui_backend,
+        style=WIZARD_STYLE,
+        qmark=QMARK,
+        use_indicator=True,
+    ).ask()
+
+    if backend is None:
+        raise KeyboardInterrupt()
+
+    return backend
+
 
 def _step_provider(config: EvoScientistConfig) -> str:
     """Step 1: Select LLM provider.
@@ -1660,6 +1689,10 @@ def run_onboard(skip_validation: bool = False) -> bool:
 
         # Load existing config as starting point
         config = load_config()
+
+        # Step 0: UI Backend
+        ui_backend = _step_ui_backend(config)
+        config.ui_backend = ui_backend
 
         # Step 1: Provider
         provider = _step_provider(config)

@@ -1121,6 +1121,55 @@ class TestChannelManagerDrain:
         _run(_test())
 
 
+class TestChannelManagerTracking:
+
+    def test_record_message(self):
+        bus = MessageBus()
+        mgr = ChannelManager(bus)
+        mgr.register(StubChannel())
+
+        mgr.record_message("stub", "received")
+        mgr.record_message("stub", "received")
+        mgr.record_message("stub", "sent")
+
+        assert mgr._message_counts["stub"]["received"] == 2
+        assert mgr._message_counts["stub"]["sent"] == 1
+
+    def test_record_message_unknown_channel(self):
+        bus = MessageBus()
+        mgr = ChannelManager(bus)
+
+        # Should not raise, auto-creates entry
+        mgr.record_message("unknown", "received")
+        assert mgr._message_counts["unknown"]["received"] == 1
+
+    def test_get_detailed_status(self):
+        bus = MessageBus()
+        mgr = ChannelManager(bus)
+        mgr.register(StubChannel())
+
+        # Simulate start_all setting start_times
+        mgr._start_times["stub"] = datetime.now()
+        mgr._message_counts["stub"] = {"received": 5, "sent": 3}
+
+        status = mgr.get_detailed_status()
+        assert "stub" in status
+        assert status["stub"]["registered"] is True
+        assert status["stub"]["received"] == 5
+        assert status["stub"]["sent"] == 3
+        assert status["stub"]["uptime_seconds"] >= 0
+        assert status["stub"]["start_time"] is not None
+
+    def test_get_detailed_status_no_start_time(self):
+        bus = MessageBus()
+        mgr = ChannelManager(bus)
+        mgr.register(StubChannel())
+
+        status = mgr.get_detailed_status()
+        assert status["stub"]["uptime_seconds"] == 0
+        assert status["stub"]["start_time"] is None
+
+
 class TestChannelManagerStatus:
 
     def test_get_status(self):
@@ -1364,6 +1413,12 @@ class TestMessageBus:
                 pass
             # dispatch should survive the error
         _run(_test())
+
+    def test_stop_flag(self):
+        bus = MessageBus()
+        assert bus._running is False
+        bus.stop()
+        assert bus._running is False
 
 
 # ═══════════════════════════════════════════════════════════════════
