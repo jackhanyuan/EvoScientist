@@ -920,7 +920,6 @@ def run_textual_interactive(
                             metadata=msg.metadata,
                         ),
                         "Media",
-                        timeout=30,
                     )
 
             response = ""

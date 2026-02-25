@@ -27,7 +27,7 @@ class TestMcpToolCaching:
             calls["load"] += 1
             return {"main": [tool]}
 
-        monkeypatch.setattr(agent_module, "load_mcp_tools", fake_load_mcp_tools)
+        monkeypatch.setattr("EvoScientist.mcp.load_mcp_tools", fake_load_mcp_tools)
 
         first = agent_module._load_mcp_tools_cached()
         second = agent_module._load_mcp_tools_cached()
@@ -49,7 +49,7 @@ class TestMcpToolCaching:
             return {"main": [f"tool-v{calls['load']}"]}
 
         monkeypatch.setattr("EvoScientist.mcp.client.load_mcp_config", fake_load_config)
-        monkeypatch.setattr(agent_module, "load_mcp_tools", fake_load_mcp_tools)
+        monkeypatch.setattr("EvoScientist.mcp.load_mcp_tools", fake_load_mcp_tools)
 
         first = agent_module._load_mcp_tools_cached()
         state["cfg"] = {"srv": {"transport": "stdio", "command": "v2"}}

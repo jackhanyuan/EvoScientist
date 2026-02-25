@@ -163,6 +163,7 @@ def cmd_interactive(
     run_name: str | None = None,
     thread_id: str | None = None,
     ui_backend: str = "rich",
+    config=None,
 ) -> None:
     """Interactive conversation mode with streaming output.
 
@@ -186,6 +187,8 @@ def cmd_interactive(
 
     resolved_ui_backend = resolve_ui_backend(ui_backend, warn_fallback=True)
     if resolved_ui_backend == "textual":
+        from functools import partial
+        load_agent = partial(_load_agent, config=config)
         run_textual_interactive(
             show_thinking=show_thinking,
             channel_send_thinking=channel_send_thinking,
@@ -196,7 +199,7 @@ def cmd_interactive(
             provider=provider,
             run_name=run_name,
             thread_id=thread_id,
-            load_agent=_load_agent,
+            load_agent=load_agent,
             create_session_workspace=_create_session_workspace,
         )
         return
@@ -382,7 +385,7 @@ def cmd_interactive(
         if ws:
             state["workspace_dir"] = ws
         console.print("[dim]Loading session...[/dim]")
-        state["agent"] = _load_agent(workspace_dir=state["workspace_dir"], checkpointer=checkpointer)
+        state["agent"] = _load_agent(workspace_dir=state["workspace_dir"], checkpointer=checkpointer, config=config)
         # Sync shared refs if channel is running
         if _channels_is_running():
             _ch_mod._cli_agent = state["agent"]
@@ -425,7 +428,7 @@ def cmd_interactive(
                         state["workspace_dir"] = ws
 
             console.print("[dim]Loading agent...[/dim]")
-            state["agent"] = _load_agent(workspace_dir=state["workspace_dir"], checkpointer=checkpointer)
+            state["agent"] = _load_agent(workspace_dir=state["workspace_dir"], checkpointer=checkpointer, config=config)
 
             # Print banner
             if state["resumed"]:
@@ -561,12 +564,12 @@ def cmd_interactive(
 
             # Auto-start channel if enabled in config
             from ..config import load_config
-            config = load_config()
-            if config and config.channel_enabled and not _channels_is_running():
+            _channel_cfg = load_config()
+            if _channel_cfg and _channel_cfg.channel_enabled and not _channels_is_running():
                 _auto_start_channel(
                     state["agent"],
                     state["thread_id"],
-                    config,
+                    _channel_cfg,
                     send_thinking=channel_send_thinking,
                 )
 
@@ -616,7 +619,7 @@ def cmd_interactive(
                             if not workspace_fixed:
                                 state["workspace_dir"] = _create_session_workspace(run_name)
                             console.print("[dim]Loading new session...[/dim]")
-                            state["agent"] = _load_agent(workspace_dir=state["workspace_dir"], checkpointer=checkpointer)
+                            state["agent"] = _load_agent(workspace_dir=state["workspace_dir"], checkpointer=checkpointer, config=config)
                             state["thread_id"] = generate_thread_id()
                             state["resumed"] = False
                             # Sync channel refs so the queue checker uses the new agent

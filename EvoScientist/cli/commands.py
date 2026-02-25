@@ -122,7 +122,7 @@ def serve(
     ensure_dirs()
 
     console.print("[dim]Loading agent...[/dim]")
-    agent = _load_agent(workspace_dir=ws)
+    agent = _load_agent(workspace_dir=ws, config=config)
     tid = str(uuid.uuid4())
 
     _start_channels_bus_mode(
@@ -532,7 +532,7 @@ def _main_callback(
         async def _single_shot():
             async with get_checkpointer() as checkpointer:
                 console.print("[dim]Loading agent...[/dim]")
-                agent = _load_agent(workspace_dir=workspace_dir, checkpointer=checkpointer)
+                agent = _load_agent(workspace_dir=workspace_dir, checkpointer=checkpointer, config=config)
                 tid = thread_id or generate_thread_id()
                 cmd_run(
                     agent,
@@ -560,6 +560,7 @@ def _main_callback(
             run_name=name,
             thread_id=thread_id,
             ui_backend=config.ui_backend,
+            config=config,
         )
 
 

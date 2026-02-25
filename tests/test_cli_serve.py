@@ -40,7 +40,7 @@ def _run_serve_once(
     def _fake_ensure_dirs():
         order.append(("ensure_dirs", None))
 
-    def _fake_load_agent(workspace_dir=None, checkpointer=None):
+    def _fake_load_agent(workspace_dir=None, checkpointer=None, config=None):
         captured["workspace_dir"] = workspace_dir
         return object()
 

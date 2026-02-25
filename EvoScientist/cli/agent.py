@@ -52,13 +52,15 @@ def _create_session_workspace(name: str | None = None) -> str:
     return workspace_dir
 
 
-def _load_agent(workspace_dir: str | None = None, checkpointer=None):
+def _load_agent(workspace_dir: str | None = None, checkpointer=None, config=None):
     """Load the CLI agent with optional persistent checkpointer.
 
     Args:
         workspace_dir: Optional per-session workspace directory.
         checkpointer: Optional LangGraph checkpointer (e.g. ``AsyncSqliteSaver``).
             Falls back to ``InMemorySaver`` when ``None``.
+        config: Optional pre-loaded ``EvoScientistConfig``.  Forwarded to
+            ``create_cli_agent`` to avoid double config loading.
     """
     from ..EvoScientist import create_cli_agent
-    return create_cli_agent(workspace_dir=workspace_dir, checkpointer=checkpointer)
+    return create_cli_agent(workspace_dir=workspace_dir, checkpointer=checkpointer, config=config)

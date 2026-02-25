@@ -1,11 +1,15 @@
 """EvoScientist Agent graph construction.
 
-This module creates and exports the compiled agent graph.
+This module defines the agent graph and its factory functions.  All heavy
+initialization (deepagents, backends, LLM, middleware) is deferred to first
+use so that importing this module is fast and non-agent CLI commands
+(``EvoSci config list``, ``EvoSci onboard``) never pay the cost.
+
 Usage:
-    from EvoScientist import agent
+    from EvoScientist import EvoScientist_agent
 
     # Notebook / programmatic usage
-    for state in agent.stream(
+    for state in EvoScientist_agent.stream(
         {"messages": [HumanMessage(content="your question")]},
         config={"configurable": {"thread_id": "1"}},
         stream_mode="values",
@@ -17,106 +21,80 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from deepagents import create_deep_agent
-from deepagents.backends import FilesystemBackend, CompositeBackend
-
-from .backends import CustomSandboxBackend, MergedReadOnlyBackend
 from .config import get_effective_config, apply_config_to_env
-from .llm import get_chat_model
-from .mcp import load_mcp_tools
-from .middleware import create_memory_middleware, ToolErrorHandlerMiddleware
 from .prompts import RESEARCHER_INSTRUCTIONS, get_system_prompt
-from .utils import load_subagents
-from .tools import tavily_search, think_tool, skill_manager
 from . import paths as _paths_mod
 from .paths import set_active_workspace, set_workspace_root
 
 # =============================================================================
-# Configuration
+# Constants
 # =============================================================================
 
-# Load configuration from file/env/defaults
-_config = get_effective_config()
-apply_config_to_env(_config)
-
-# NOTE: We intentionally do NOT call set_workspace_root() at module level.
-# The CLI (commands.py) calls set_workspace_root() *before* importing this
-# module.  A module-level call here would overwrite the CLI's --workdir
-# value with config.default_workdir, violating the priority chain
-# (CLI args > config file).  Instead, config.default_workdir is applied
-# as a fallback inside create_cli_agent() when no explicit workspace_dir
-# is provided.
-
-# Research limits (from config)
-MAX_CONCURRENT = _config.max_concurrent
-MAX_ITERATIONS = _config.max_iterations
-
-# Workspace settings (defer dir creation to CLI; here we just resolve paths)
-# Read from the paths module so values reflect any earlier set_workspace_root().
-WORKSPACE_DIR = str(_paths_mod.WORKSPACE_ROOT)
-set_active_workspace(WORKSPACE_DIR)
-MEMORY_DIR = str(_paths_mod.MEMORY_DIR)  # Shared across sessions (not per-session)
-SKILLS_DIR = str(Path(__file__).parent / "skills")
-USER_SKILLS_DIR = str(_paths_mod.USER_SKILLS_DIR)
 SUBAGENTS_CONFIG = Path(__file__).parent / "subagent.yaml"
+SKILLS_DIR = str(Path(__file__).parent / "skills")
 
 # =============================================================================
-# Initialization
+# Lazy state — initialized on first use, not at import time
 # =============================================================================
 
-
-# Generate system prompt with limits
-SYSTEM_PROMPT = get_system_prompt(
-    max_concurrent=MAX_CONCURRENT,
-    max_iterations=MAX_ITERATIONS,
-)
-
-# Initialize chat model using the LLM module (respects config settings)
-chat_model = get_chat_model(
-    model=_config.model,
-    provider=_config.provider,
-)
-
-# Initialize workspace backend
-_workspace_backend = CustomSandboxBackend(
-    root_dir=WORKSPACE_DIR,
-    virtual_mode=True,
-    timeout=300,
-)
-
-# Skills backend: merge user-installed (./skills/) and system (package) skills
-_skills_backend = MergedReadOnlyBackend(
-    primary_dir=USER_SKILLS_DIR,                        # user-installed, takes priority
-    secondary_dir=SKILLS_DIR,                           # package built-in, fallback
-)
-
-# Memory backend: persistent filesystem for long-term memory (shared across sessions)
-_memory_backend = FilesystemBackend(
-    root_dir=MEMORY_DIR,
-    virtual_mode=True,
-)
-
-# Composite backend: workspace as default, skills and memory mounted
-backend = CompositeBackend(
-    default=_workspace_backend,
-    routes={
-        "/skills/": _skills_backend,
-        "/memory/": _memory_backend,
-    },
-)
-
-tool_registry = {
-    "think_tool": think_tool,
-    "tavily_search": tavily_search,
-}
-
-# Base tools that every agent variant gets (before MCP)
-BASE_TOOLS = [think_tool, skill_manager]
+_config = None
+_chat_model = None
+_system_prompt = None
 
 # Cache MCP tools by the effective config signature to avoid reconnecting
 # to MCP servers on every `/new` when config is unchanged.
 _MCP_TOOLS_CACHE_KEY: str | None = None
 _MCP_TOOLS_CACHE_VALUE: dict[str, list] | None = None
+
+# Default agent (no checkpointer) — used by langgraph dev / LangSmith / notebooks.
+# Lazily constructed on first access so MCP tools are included without
+# spawning subprocesses at import time.
+_EvoScientist_agent = None
+
+
+# =============================================================================
+# Lazy initialization helpers
+# =============================================================================
+
+
+def _ensure_config(config=None):
+    """Return cached config.  If *config* is passed, cache and use it."""
+    global _config
+    if config is not None:
+        _config = config
+        apply_config_to_env(_config)
+    if _config is None:
+        _config = get_effective_config()
+        apply_config_to_env(_config)
+    return _config
+
+
+def _ensure_chat_model():
+    """Return cached chat model, creating it on first call."""
+    global _chat_model
+    if _chat_model is None:
+        from .llm import get_chat_model
+
+        cfg = _ensure_config()
+        _chat_model = get_chat_model(model=cfg.model, provider=cfg.provider)
+    return _chat_model
+
+
+def _ensure_system_prompt():
+    """Return cached system prompt, creating it on first call."""
+    global _system_prompt
+    if _system_prompt is None:
+        cfg = _ensure_config()
+        _system_prompt = get_system_prompt(
+            max_concurrent=cfg.max_concurrent,
+            max_iterations=cfg.max_iterations,
+        )
+    return _system_prompt
+
+
+# =============================================================================
+# MCP caching
+# =============================================================================
 
 
 def _mcp_config_signature() -> str:
@@ -137,6 +115,8 @@ def _load_mcp_tools_cached() -> dict[str, list]:
     """Load MCP tools with config-aware caching."""
     global _MCP_TOOLS_CACHE_KEY, _MCP_TOOLS_CACHE_VALUE
 
+    from .mcp import load_mcp_tools
+
     cfg_key = _mcp_config_signature()
     if not cfg_key:
         _MCP_TOOLS_CACHE_KEY = ""
@@ -152,6 +132,11 @@ def _load_mcp_tools_cached() -> dict[str, list]:
     return {k: list(v) for k, v in loaded.items()}
 
 
+# =============================================================================
+# Agent construction helpers
+# =============================================================================
+
+
 def _inject_subagent_middleware(subs: list[dict]) -> None:
     """Ensure every subagent gets ToolErrorHandlerMiddleware.
 
@@ -159,12 +144,29 @@ def _inject_subagent_middleware(subs: list[dict]) -> None:
     ToolNode handler which produces terse messages without tracebacks or
     retry guidance — reducing the subagent's ability to self-recover.
     """
+    from .middleware import ToolErrorHandlerMiddleware
+
     for sa in subs:
         sa.setdefault("middleware", []).append(ToolErrorHandlerMiddleware())
 
 
+def _build_prompt_refs() -> dict:
+    """Build prompt references with the current date (not frozen at import)."""
+    return {
+        "RESEARCHER_INSTRUCTIONS": RESEARCHER_INSTRUCTIONS.format(
+            date=datetime.now().strftime("%Y-%m-%d"),
+        ),
+    }
+
+
 def _build_base_kwargs(base_backend, base_middleware):
     """Build agent kwargs *without* MCP (fast, no subprocess spawning)."""
+    from .utils import load_subagents
+    from .tools import tavily_search, think_tool, skill_manager
+
+    tool_registry = {"think_tool": think_tool, "tavily_search": tavily_search}
+    base_tools = [think_tool, skill_manager]
+
     subs = load_subagents(
         SUBAGENTS_CONFIG,
         tool_registry=tool_registry,
@@ -173,12 +175,12 @@ def _build_base_kwargs(base_backend, base_middleware):
     _inject_subagent_middleware(subs)
     return dict(
         name="EvoScientist",
-        model=chat_model,
-        tools=list(BASE_TOOLS),
+        model=_ensure_chat_model(),
+        tools=list(base_tools),
         backend=base_backend,
         subagents=subs,
         middleware=base_middleware,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=_ensure_system_prompt(),
         skills=["/skills/"],
     )
 
@@ -189,9 +191,15 @@ def load_mcp_and_build_kwargs(base_backend, base_middleware):
     Re-connects to MCP servers only when the effective MCP config changes.
     Falls back to base kwargs if no MCP configured.
     """
+    from .utils import load_subagents
+    from .tools import tavily_search, think_tool, skill_manager
+
     mcp_by_agent = _load_mcp_tools_cached()
     if not mcp_by_agent:
         return _build_base_kwargs(base_backend, base_middleware)
+
+    tool_registry = {"think_tool": think_tool, "tavily_search": tavily_search}
+    base_tools = [think_tool, skill_manager]
 
     # Fresh tool registry — start from base tools + MCP tools
     registry = dict(tool_registry)
@@ -216,40 +224,73 @@ def load_mcp_and_build_kwargs(base_backend, base_middleware):
 
     return dict(
         name="EvoScientist",
-        model=chat_model,
-        tools=BASE_TOOLS + mcp_main,
+        model=_ensure_chat_model(),
+        tools=base_tools + mcp_main,
         backend=base_backend,
         subagents=subs,
         middleware=base_middleware,
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=_ensure_system_prompt(),
         skills=["/skills/"],
     )
 
 
-def _build_prompt_refs() -> dict:
-    """Build prompt references with the current date (not frozen at import)."""
-    return {
-        "RESEARCHER_INSTRUCTIONS": RESEARCHER_INSTRUCTIONS.format(
-            date=datetime.now().strftime("%Y-%m-%d"),
-        ),
-    }
+# =============================================================================
+# Default agent (langgraph dev / notebooks)
+# =============================================================================
 
-base_middleware = [
-    ToolErrorHandlerMiddleware(),
-    create_memory_middleware(MEMORY_DIR, extraction_model=chat_model),
-]
 
-# Default agent (no checkpointer) — used by langgraph dev / LangSmith / notebooks.
-# Lazily constructed on first access so MCP tools are included without
-# spawning subprocesses at import time.
-_EvoScientist_agent = None
+def _get_default_backend():
+    """Build the default composite backend from current paths."""
+    from deepagents.backends import FilesystemBackend, CompositeBackend
+    from .backends import CustomSandboxBackend, MergedReadOnlyBackend
+
+    workspace_dir = str(_paths_mod.WORKSPACE_ROOT)
+    set_active_workspace(workspace_dir)
+    memory_dir = str(_paths_mod.MEMORY_DIR)
+    user_skills_dir = str(_paths_mod.USER_SKILLS_DIR)
+
+    ws_backend = CustomSandboxBackend(
+        root_dir=workspace_dir,
+        virtual_mode=True,
+        timeout=300,
+    )
+    sk_backend = MergedReadOnlyBackend(
+        primary_dir=user_skills_dir,
+        secondary_dir=SKILLS_DIR,
+    )
+    mem_backend = FilesystemBackend(
+        root_dir=memory_dir,
+        virtual_mode=True,
+    )
+    return CompositeBackend(
+        default=ws_backend,
+        routes={
+            "/skills/": sk_backend,
+            "/memory/": mem_backend,
+        },
+    )
+
+
+def _get_default_middleware():
+    """Build the default middleware list."""
+    from .middleware import create_memory_middleware, ToolErrorHandlerMiddleware
+
+    memory_dir = str(_paths_mod.MEMORY_DIR)
+    return [
+        ToolErrorHandlerMiddleware(),
+        create_memory_middleware(memory_dir, extraction_model=_ensure_chat_model()),
+    ]
 
 
 def _get_default_agent():
     """Build the default agent (with MCP, no checkpointer) on first access."""
     global _EvoScientist_agent
     if _EvoScientist_agent is None:
-        kwargs = load_mcp_and_build_kwargs(backend, base_middleware)
+        from deepagents import create_deep_agent
+
+        be = _get_default_backend()
+        mw = _get_default_middleware()
+        kwargs = load_mcp_and_build_kwargs(be, mw)
         _EvoScientist_agent = create_deep_agent(**kwargs).with_config(
             {"recursion_limit": 500}
         )
@@ -259,10 +300,22 @@ def _get_default_agent():
 def __getattr__(name: str):
     if name == "EvoScientist_agent":
         return _get_default_agent()
+    # Backward compat for module-level names
+    if name == "chat_model":
+        return _ensure_chat_model()
+    if name == "SYSTEM_PROMPT":
+        return _ensure_system_prompt()
+    if name == "backend":
+        return _get_default_backend()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def create_cli_agent(workspace_dir: str | None = None, checkpointer=None):
+# =============================================================================
+# CLI agent factory
+# =============================================================================
+
+
+def create_cli_agent(workspace_dir: str | None = None, checkpointer=None, config=None):
     """Create agent with checkpointer for CLI multi-turn support.
 
     A fresh backend is constructed on every call using the current
@@ -274,9 +327,19 @@ def create_cli_agent(workspace_dir: str | None = None, checkpointer=None):
             defaults to the current ``paths.WORKSPACE_ROOT``.
         checkpointer: Optional LangGraph checkpointer. If ``None``,
             falls back to ``InMemorySaver`` (non-persistent).
+        config: Optional pre-loaded ``EvoScientistConfig``.  If ``None``,
+            loads from file/env/defaults.  Passing this avoids double
+            loading when the CLI has already loaded config.
     """
     import os as _os
+
+    from deepagents import create_deep_agent
+    from deepagents.backends import FilesystemBackend, CompositeBackend
+    from .backends import CustomSandboxBackend, MergedReadOnlyBackend
+    from .middleware import create_memory_middleware, ToolErrorHandlerMiddleware
     from . import paths as _paths
+
+    cfg = _ensure_config(config)
 
     if checkpointer is None:
         from langgraph.checkpoint.memory import InMemorySaver  # type: ignore[import-untyped]
@@ -287,9 +350,9 @@ def create_cli_agent(workspace_dir: str | None = None, checkpointer=None):
     # that never call set_workspace_root() themselves.  CLI callers always
     # pass workspace_dir explicitly, so their --workdir is never overwritten.
     if workspace_dir is None:
-        if _config.default_workdir:
+        if cfg.default_workdir:
             set_workspace_root(
-                _os.path.abspath(_os.path.expanduser(_config.default_workdir))
+                _os.path.abspath(_os.path.expanduser(cfg.default_workdir))
             )
         workspace_dir = str(_paths.WORKSPACE_ROOT)
 
@@ -324,7 +387,7 @@ def create_cli_agent(workspace_dir: str | None = None, checkpointer=None):
 
     mw = [
         ToolErrorHandlerMiddleware(),
-        create_memory_middleware(_mem_dir, extraction_model=chat_model),
+        create_memory_middleware(_mem_dir, extraction_model=_ensure_chat_model()),
     ]
 
     # Re-load MCP tools from current config (picks up /mcp add changes)
