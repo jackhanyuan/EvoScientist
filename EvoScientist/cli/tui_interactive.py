@@ -201,13 +201,13 @@ def run_textual_interactive(
         CSS = """
         Screen {
             layout: vertical;
-            background: #06080d;
+            background: #16161a;
             color: #d1d5db;
         }
         #chat {
             height: 1fr;
             padding: 1 2;
-            background: #06080d;
+            background: #16161a;
         }
         #welcome {
             height: auto;
@@ -216,12 +216,12 @@ def run_textual_interactive(
         #input-shell {
             height: auto;
             padding: 0 2 1 2;
-            background: #06080d;
+            background: #16161a;
         }
         #input-row {
             height: 3;
             border: solid #0284c7;
-            background: #11151b;
+            background: #1e1f26;
             padding: 0 1;
         }
         #input-cursor {
@@ -242,7 +242,7 @@ def run_textual_interactive(
         #queued-message {
             display: none;
             height: auto;
-            background: #11151b;
+            background: #1e1f26;
             padding: 0 2;
             color: #9ca3af;
         }
@@ -250,7 +250,7 @@ def run_textual_interactive(
             display: none;
             height: auto;
             max-height: 15;
-            background: #11151b;
+            background: #1e1f26;
             padding: 0 1;
             border-bottom: solid #0284c7;
         }
