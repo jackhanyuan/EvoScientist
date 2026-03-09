@@ -483,10 +483,9 @@ def _step_ui_backend(config: EvoScientistConfig) -> str:
     ]
 
     # Map legacy values to current ones
-    default_backend = config.ui_backend
-    if default_backend == "textual":
-        default_backend = "tui"
-    elif default_backend not in ("tui", "cli"):
+    _legacy_map = {"textual": "tui", "rich": "cli"}
+    default_backend = _legacy_map.get(config.ui_backend, config.ui_backend)
+    if default_backend not in ("tui", "cli"):
         default_backend = "tui"
 
     backend = questionary.select(

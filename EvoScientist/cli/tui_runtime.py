@@ -9,6 +9,7 @@ from .tui_backends import RichStreamingBackend, StreamingTUIBackend
 
 DEFAULT_UI_BACKEND = "cli"
 SUPPORTED_UI_BACKENDS = ("cli", "tui")
+_LEGACY_BACKEND_MAP = {"textual": "tui", "rich": "cli"}
 
 
 def normalize_ui_backend(value: str | None) -> str:
@@ -16,6 +17,7 @@ def normalize_ui_backend(value: str | None) -> str:
     if not value:
         return DEFAULT_UI_BACKEND
     normalized = value.strip().lower()
+    normalized = _LEGACY_BACKEND_MAP.get(normalized, normalized)
     if normalized in SUPPORTED_UI_BACKENDS:
         return normalized
     return DEFAULT_UI_BACKEND
