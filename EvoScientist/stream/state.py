@@ -79,6 +79,7 @@ class StreamState:
 
     def __init__(self):
         self.thinking_text = ""
+        self.summarization_text = ""
         self.response_text = ""
         self.tool_calls = []
         self.tool_results = []
@@ -259,6 +260,9 @@ class StreamState:
         elif event_type == "interrupt":
             self.pending_interrupt = event
 
+        elif event_type == "summarization":
+            self.summarization_text = event.get("content", "")
+
         elif event_type == "usage_stats":
             self.total_input_tokens += event.get("input_tokens", 0)
             self.total_output_tokens += event.get("output_tokens", 0)
@@ -281,6 +285,7 @@ class StreamState:
         """Get kwargs for create_streaming_display()."""
         return {
             "thinking_text": self.thinking_text,
+            "summarization_text": self.summarization_text,
             "response_text": self.response_text,
             "latest_text": self.latest_text,
             "tool_calls": self.tool_calls,

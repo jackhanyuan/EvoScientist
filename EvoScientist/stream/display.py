@@ -374,6 +374,7 @@ def create_streaming_display(
     response_markdown: Any = None,
     total_input_tokens: int = 0,
     total_output_tokens: int = 0,
+    summarization_text: str = "",
 ) -> Any:
     """Create Rich display layout for streaming output.
 
@@ -409,6 +410,18 @@ def create_streaming_display(
             Text(display_thinking, style="dim"),
             title=thinking_title,
             border_style="blue",
+            padding=(0, 1),
+        ))
+
+    # Summarization panel (context was compressed by LangGraph middleware)
+    if summarization_text:
+        summary_display = summarization_text.rstrip()
+        if len(summary_display) > 300:
+            summary_display = summary_display[:300] + " ..."
+        elements.append(Panel(
+            Text(summary_display, style="dim italic"),
+            title="Context Summarized",
+            border_style="#f59e0b",
             padding=(0, 1),
         ))
 
@@ -619,6 +632,16 @@ def display_final_results(
             Text(display_thinking, style="dim"),
             title="Thinking",
             border_style="blue",
+        ))
+
+    if state.summarization_text:
+        summary_display = state.summarization_text.rstrip()
+        if len(summary_display) > 500:
+            summary_display = summary_display[:500] + " ..."
+        console.print(Panel(
+            Text(summary_display, style="dim italic"),
+            title="Context Summarized",
+            border_style="#f59e0b",
         ))
 
     if show_tools and state.tool_calls:
@@ -1117,6 +1140,13 @@ async def _astream_to_console(
         if len(dt) > 500:
             dt = dt[:250] + "\n\u2026truncated\u2026\n" + dt[-250:]
         console.print(Panel(Text(dt, style="dim"), title="Thinking", border_style="blue"))
+
+    # Summarization
+    if state.summarization_text:
+        st = state.summarization_text.rstrip()
+        if len(st) > 500:
+            st = st[:500] + " ..."
+        console.print(Panel(Text(st, style="dim italic"), title="Context Summarized", border_style="#f59e0b"))
 
     # 1) Regular (non-task) tools — above Task List
     for i, tc in enumerate(state.tool_calls):

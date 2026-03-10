@@ -193,6 +193,7 @@ def run_textual_interactive(
         from .widgets import (
             LoadingWidget,
             ThinkingWidget,
+            SummarizationWidget,
             AssistantMessage,
             ToolCallWidget,
             SubAgentWidget,
@@ -482,6 +483,7 @@ def run_textual_interactive(
             state = StreamState()
             loading_removed = False
             thinking_w: ThinkingWidget | None = None
+            summarization_w: SummarizationWidget | None = None
             assistant_w: AssistantMessage | None = None
             todo_w: TodoWidget | None = None
             tool_widgets: dict[str, ToolCallWidget] = {}
@@ -655,7 +657,7 @@ def run_textual_interactive(
 
                         # -- Remove loading spinner on first content event --
                         if not loading_removed and event_type in (
-                            "thinking", "text", "tool_call",
+                            "thinking", "text", "tool_call", "summarization",
                         ):
                             await loading.cleanup()
                             loading_removed = True
@@ -666,6 +668,14 @@ def run_textual_interactive(
                                     thinking_w = ThinkingWidget(show_thinking=show_thinking)
                                     await container.mount(thinking_w)
                             thinking_w.append_text(event.get("content", ""))
+
+                        elif event_type == "summarization":
+                            content = event.get("content", "")
+                            if content:
+                                if summarization_w is None:
+                                    summarization_w = SummarizationWidget()
+                                    await container.mount(summarization_w)
+                                summarization_w.set_content(content)
 
                         elif event_type == "text":
                             if thinking_w is not None and thinking_w._is_active:

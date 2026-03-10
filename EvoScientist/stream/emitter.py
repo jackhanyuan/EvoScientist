@@ -110,6 +110,11 @@ class StreamEventEmitter:
         })
 
     @staticmethod
+    def summarization(content: str) -> StreamEvent:
+        """Context summarization event."""
+        return StreamEvent("summarization", {"type": "summarization", "content": content})
+
+    @staticmethod
     def error(message: str) -> StreamEvent:
         """Error event."""
         return StreamEvent("error", {"type": "error", "message": message})

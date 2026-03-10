@@ -2,6 +2,7 @@
 
 from .loading_widget import LoadingWidget
 from .thinking_widget import ThinkingWidget
+from .summarization_widget import SummarizationWidget
 from .assistant_message import AssistantMessage
 from .tool_call_widget import ToolCallWidget
 from .subagent_widget import SubAgentWidget
@@ -15,6 +16,7 @@ from .thread_selector import ThreadPickerWidget
 __all__ = [
     "LoadingWidget",
     "ThinkingWidget",
+    "SummarizationWidget",
     "AssistantMessage",
     "ToolCallWidget",
     "SubAgentWidget",

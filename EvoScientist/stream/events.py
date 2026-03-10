@@ -357,8 +357,13 @@ async def stream_agent_events(
             else:
                 msg = data
 
-            # Filter summarization middleware synthetic messages
+            # Emit summarization middleware messages as a dedicated event
             if isinstance(metadata, dict) and metadata.get("lc_source") == "summarization":
+                content = ""
+                if hasattr(msg, "content"):
+                    content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                if content:
+                    yield emitter.summarization(content).data
                 continue
 
             subagent = _get_subagent_name(namespace, metadata)
