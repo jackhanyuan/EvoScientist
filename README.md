@@ -68,7 +68,7 @@ Going beyond traditional human-in-the-loop systems, EvoScientist introduces an A
 - [ ] ⏰ Scheduled tasks for the core system planned
 
 ## 🔥 News
-- **[?? Mar 2026]** ⛳ Technical Report is live! [**Check it out**](https://arxiv.org/abs/1234.56780) 👈
+- **[?? Mar 2026]** ⛳ Technical Report is live! [**Check it out**](https://arxiv.org/abs/2603.08127) 👈
 - **[?? Mar 2026]** 🚀 [**EvoScientist**](https://github.com/EvoScientist/EvoScientist) officially debuts!
 
 ## 📖 Table of Contents
@@ -426,6 +426,14 @@ For any inquiries or collaboration opportunities, please contact: [**EvoScientis
 
 We welcome contributions from developers, researchers, and AI coding agents at all levels. Our [Contributing Guidelines](./CONTRIBUTING.md) are designed for both humans and AI agents — covering architecture, patterns, extension guides, and code standards to help you contribute safely and effectively.
 
+### 📝 Citation
+@article{lyu2026evoscientist,
+  title={EvoScientist: Towards Multi-Agent Evolving AI Scientists for End-to-End Scientific Discovery},
+  author={Yougang Lyu and Xi Zhang and Xinhao Yi and Yuyue Zhao and Shuyu Guo and Wenxiang Hu and Jan Piotrowski and Jakub Kaliski and Jacopo Urbani and Zaiqiao Meng and Lun Zhou and Xiaohui Yan},
+  journal={arXiv preprint arXiv:2603.08127},
+  year={2026}
+}
+
 ### 📈 Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=EvoScientist/EvoScientist&type=date&legend=top-left)](https://www.star-history.com/#EvoScientist/EvoScientist&type=date&legend=top-left)
@@ -439,7 +447,3 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 <p align="right"><a href="#top">🔝Back to top</a></p>
 
 ---
-
-<p align="center">
-  Initiated and led by <a href="https://github.com/x-izhang">Xi Zhang</a>, built with the open-source community.
-</p>
