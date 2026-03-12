@@ -973,7 +973,7 @@ def _step_thinking(config: EvoScientistConfig) -> bool:
 _RECOMMENDED_SKILLS = [
     # ── Official (EvoScientist) ──
     {
-        "label": "EvoSci Skills  (optimized for EvoScientist — paper planning, writing, review, etc.)",
+        "label": "EvoSci Skills  (optimized for EvoScientist — paper planning, writing, review, etc.) 👈 Recommended",
         "source": "EvoScientist/EvoSkills@skills",
     },
     # ── Third-party (K-Dense) ──

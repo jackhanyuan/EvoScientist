@@ -55,6 +55,8 @@ _MODEL_ENTRIES: list[tuple[str, str, str]] = [
     ("gemini-2.5-flash-lite", "gemini-2.5-flash-lite", "google-genai"),
     ("gemini-2.5-pro", "gemini-2.5-pro", "google-genai"),
     # NVIDIA
+    ("nemotron-super", "nvidia/nemotron-3-super-120b-a12b", "nvidia"),
+    ("nemotron-nano", "nvidia/nemotron-3-nano-30b-a3b", "nvidia"),
     ("glm4.7", "z-ai/glm4.7", "nvidia"),
     ("deepseek-v3.2", "deepseek-ai/deepseek-v3.2", "nvidia"),
     ("deepseek-v3.1", "deepseek-ai/deepseek-v3.1-terminus", "nvidia"),
@@ -64,7 +66,6 @@ _MODEL_ENTRIES: list[tuple[str, str, str]] = [
     ("minimax-m2.1", "minimaxai/minimax-m2.1", "nvidia"),
     ("qwen3.5-397b", "qwen/qwen3.5-397b-a17b", "nvidia"),
     ("step-3.5-flash", "stepfun-ai/step-3.5-flash", "nvidia"),
-    ("nemotron-nano", "nvidia/nemotron-3-nano-30b-a3b", "nvidia"),
     # SiliconFlow
     ("minimax-m2.5", "Pro/MiniMaxAI/MiniMax-M2.5", "siliconflow"),
     ("glm-5", "Pro/zai-org/GLM-5", "siliconflow"),
