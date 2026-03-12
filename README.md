@@ -172,8 +172,11 @@ The easiest way to configure API keys is the interactive wizard:
 ```bash
 EvoSci onboard
 ```
+
 > [!TIP]
 > It walks you through provider selection, key validation, model choice, and workspace mode.
+
+<img src=".github/assets/EvoScientist_onboard.png" alt="onboard" width="80%" />
 
 <details>
 <summary> 📟 Manual configuration via environment variables </summary>
