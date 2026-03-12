@@ -75,9 +75,9 @@ Moving beyond traditional human-in-the-loop systems, EvoScientist adopts a human
 - [ ] ⏰ Scheduled tasks for the core system planned
 
 ## 🔥 News
-- **[?? Mar 2026]** ⛳ Technical Report is live! [**Check it out**](https://arxiv.org/abs/2603.08127) 👈
-- **[?? Mar 2026]** 🏆 6/6 accepted at [ICAIS 2025](https://icais.ai/) AI Scientist Track — Best Paper & AI Reviewer's Appraisal Award! [**Details**](https://airaxiv.com/papers/?q=zacharyzhang2022%40gmail.com) 👈
-- **[?? Mar 2026]** 🚀 [**EvoScientist**](https://github.com/EvoScientist/EvoScientist) officially debuts!
+- **[13 Mar 2026]** ⛳ Technical Report is live! [**Check it out**](https://arxiv.org/abs/2603.08127) 👈
+- **[11 Mar 2026]** 🏆 6/6 accepted at [ICAIS 2025](https://icais.ai/) AI Scientist Track — Best Paper & AI Reviewer's Appraisal Award! [**Details**](https://airaxiv.com/papers/?q=zacharyzhang2022%40gmail.com) 👈
+- **[09 Mar 2026]** 🚀 [**EvoScientist**](https://github.com/EvoScientist/EvoScientist) officially debuts!
 
 ## 📖 Table of Contents
 
@@ -242,7 +242,7 @@ EvoSci serve                      # headless mode — channels only, no interact
 </details>
 
 <details>
-<summary>Action Approval (HITL)</summary>
+<summary>Action Approval</summary>
 
 By default, shell commands (`execute` tool) require human approval before running. To skip approval prompts:
 
@@ -263,7 +263,7 @@ During a session you can also reply **3** (Approve all) at any approval prompt t
 </details>
 
 <details>
-<summary>Agent Questions (Ask User)</summary>
+<summary>Agent Questions</summary>
 
 The agent can proactively ask you questions when it needs clarification (e.g., dataset choice, experiment direction). This is enabled by default. To disable:
 
