@@ -515,9 +515,9 @@ Jan Piotrowski, Wiktor Cupiał, Jakub Kaliski, Jakub Filipiuk, Xinhao Yi, Shuyu 
 
 <p align="right"><a href="#top">🔝回到顶部</a></p>
 
----
+<!-- ---
 
 <p align="center">
   Created and maintained by <a href="https://github.com/x-izhang"><b>Xi Zhang</b></a>, built with the open-source community.
-</p>
+</p> -->
 

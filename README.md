@@ -506,8 +506,3 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICE
 
 <p align="right"><a href="#top">🔝Back to top</a></p>
 
----
-
-<p align="center">
-  Created and maintained by <a href="https://github.com/x-izhang"><b>Xi Zhang</b></a>, built with the open-source community.
-</p>
