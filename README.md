@@ -208,7 +208,7 @@ EvoSci onboard
 
 > [!TIP]
 > It walks you through provider selection, key validation, model choice, and workspace mode. 
-> Supports OAuth sign-in for [Claude Code](https://claude.com/product/claude-code) and [Codex ClI](https://developers.openai.com/codex/cli/) users — no API key needed.
+> Supports OAuth sign-in for [Claude Code](https://claude.com/product/claude-code) and [Codex CLI](https://developers.openai.com/codex/cli/) users — no API key needed.
 
 ![onboard](.github/assets/EvoScientist_onboard.png)
 
