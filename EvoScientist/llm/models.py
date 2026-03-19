@@ -25,6 +25,7 @@ from langchain.chat_models import init_chat_model
 def _patch_anthropic_proxy_compat() -> None:
     try:
         import types as _types
+
         from langchain_anthropic.chat_models import ChatAnthropic as _CA
 
         _orig = _CA._make_message_chunk_from_anthropic_event

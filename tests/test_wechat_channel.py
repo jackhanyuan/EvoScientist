@@ -7,23 +7,20 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
+from EvoScientist.channels.base import ChannelError
 from EvoScientist.channels.wechat.channel import (
     WeChatChannel,
-    WeComConfig,
     WeChatMPConfig,
+    WeComConfig,
     _strip_markdown,
 )
 from EvoScientist.channels.wechat.crypto import (
     WeChatCrypto,
-    parse_xml,
     _pkcs7_pad,
     _pkcs7_unpad,
+    parse_xml,
 )
-from EvoScientist.channels.base import ChannelError
-
-
 from tests.conftest import run_async as _run
-
 
 # ── Config tests ──────────────────────────────────────────────────
 
@@ -241,12 +238,12 @@ class TestWeChatCrypto:
     # Skip encryption tests when no crypto backend is available
     _has_crypto = False
     try:
-        from Crypto.Cipher import AES as _aes  # noqa: F401
+        from Crypto.Cipher import AES as _aes
 
         _has_crypto = True
     except ImportError:
         try:
-            import pyaes as _pyaes  # noqa: F401
+            import pyaes as _pyaes
 
             _has_crypto = True
         except ImportError:

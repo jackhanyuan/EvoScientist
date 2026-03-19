@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from rich.text import Text
-
 from textual.binding import Binding, BindingType
 from textual.containers import Container
 from textual.message import Message

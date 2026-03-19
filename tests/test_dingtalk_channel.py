@@ -5,10 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from EvoScientist.channels.dingtalk.channel import DingTalkChannel, DingTalkConfig
 from EvoScientist.channels.base import ChannelError, OutboundMessage
-
-
+from EvoScientist.channels.dingtalk.channel import DingTalkChannel, DingTalkConfig
 from tests.conftest import run_async as _run
 
 

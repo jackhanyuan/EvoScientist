@@ -153,8 +153,9 @@ class TestCompactNegligibleSavings:
 
     def test_still_compacts_when_few_messages_but_high_tokens(self, _run):
         """2 messages but they account for >2% of tokens — should compact."""
-        from EvoScientist.cli.commands import compact_conversation
         from langchain_core.messages import HumanMessage
+
+        from EvoScientist.cli.commands import compact_conversation
 
         agent = MagicMock()
         msgs = [MagicMock() for _ in range(10)]
@@ -211,8 +212,9 @@ class TestCompactSuccess:
     """Normal compaction flow."""
 
     def test_successful_compaction(self, _run):
-        from EvoScientist.cli.commands import compact_conversation
         from langchain_core.messages import HumanMessage
+
+        from EvoScientist.cli.commands import compact_conversation
 
         agent = MagicMock()
         msgs = [MagicMock() for _ in range(20)]
@@ -281,8 +283,9 @@ class TestCompactSuccess:
 
     def test_offload_failure_non_fatal(self, _run):
         """Offload failure should not prevent compaction."""
-        from EvoScientist.cli.commands import compact_conversation
         from langchain_core.messages import HumanMessage
+
+        from EvoScientist.cli.commands import compact_conversation
 
         agent = MagicMock()
         msgs = [MagicMock() for _ in range(10)]

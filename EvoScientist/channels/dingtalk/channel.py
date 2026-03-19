@@ -3,15 +3,15 @@
 import asyncio
 import json
 import logging
-from urllib.parse import quote_plus
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote_plus
 
-from ..base import Channel, RawIncoming, ChannelError
+from ..base import Channel, ChannelError, RawIncoming
 from ..capabilities import DINGTALK as DINGTALK_CAPS
-from ..mixins import WebSocketMixin, TokenMixin
 from ..config import BaseChannelConfig
+from ..mixins import TokenMixin, WebSocketMixin
 
 logger = logging.getLogger(__name__)
 

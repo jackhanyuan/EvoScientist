@@ -4,7 +4,6 @@ from EvoScientist.stream.emitter import StreamEventEmitter
 from EvoScientist.stream.events import _extract_summarization_text
 from EvoScientist.stream.state import StreamState
 
-
 # ---------------------------------------------------------------------------
 # Emitter
 # ---------------------------------------------------------------------------

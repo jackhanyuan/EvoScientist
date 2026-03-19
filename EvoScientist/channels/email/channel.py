@@ -21,10 +21,10 @@ from email.mime.text import MIMEText
 from email.utils import parseaddr
 from pathlib import Path
 
-from ..base import Channel, RawIncoming, ChannelError
+from ..base import Channel, ChannelError, RawIncoming
 from ..capabilities import EMAIL as EMAIL_CAPS
-from ..mixins import PollingMixin
 from ..config import BaseChannelConfig
+from ..mixins import PollingMixin
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +37,9 @@ def _decode_hdr(raw: str) -> str:
 
 
 def _strip_html(text: str) -> str:
-    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
-    text = re.sub(r"<p[^>]*>", "\n", text, flags=re.I)
-    text = re.sub(r"</p>", "\n", text, flags=re.I)
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<p[^>]*>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"</p>", "\n", text, flags=re.IGNORECASE)
     text = re.sub(r"<[^>]+>", "", text)
     return html.unescape(text).strip()
 

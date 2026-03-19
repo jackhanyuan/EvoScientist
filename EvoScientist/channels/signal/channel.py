@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from ..base import Channel, RawIncoming, ChannelError
+from ..base import Channel, ChannelError, RawIncoming
 from ..capabilities import SIGNAL as SIGNAL_CAPS
 from ..config import BaseChannelConfig
 
@@ -102,7 +102,7 @@ class SignalChannel(Channel):
             await writer.wait_closed()
             logger.info("signal-cli daemon already running")
             return
-        except (ConnectionRefusedError, asyncio.TimeoutError, OSError):
+        except (TimeoutError, ConnectionRefusedError, OSError):
             pass
 
         # Start daemon
@@ -437,7 +437,7 @@ class SignalChannel(Channel):
 
         try:
             return await asyncio.wait_for(fut, timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._pending_rpcs.pop(rpc_id, None)
             logger.warning(f"Signal RPC '{method}' timed out after {timeout}s")
             return None

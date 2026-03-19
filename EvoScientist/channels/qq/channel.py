@@ -6,7 +6,7 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 
-from ..base import Channel, RawIncoming, ChannelError
+from ..base import Channel, ChannelError, RawIncoming
 from ..capabilities import QQ as QQ_CAPS
 from ..config import BaseChannelConfig
 
@@ -64,7 +64,7 @@ class QQChannel(Channel):
 
     def __init__(self, config: QQConfig):
         super().__init__(config)
-        self._client: "botpy.Client | None" = None
+        self._client: botpy.Client | None = None
         self._bot_task: asyncio.Task | None = None
         self._processed_ids: deque = deque(maxlen=1000)
         self._msg_seq: dict[str, int] = {}  # msg_id -> next seq number

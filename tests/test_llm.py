@@ -3,15 +3,14 @@
 from unittest.mock import patch
 
 from EvoScientist.llm import (
-    MODELS,
     DEFAULT_MODEL,
+    MODELS,
     get_chat_model,
+    get_model_info,
     get_models_for_provider,
     list_models,
-    get_model_info,
 )
 from EvoScientist.llm.models import _MODEL_ENTRIES
-
 
 # =============================================================================
 # Test MODELS registry

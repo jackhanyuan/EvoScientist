@@ -105,7 +105,7 @@ async def retry_async(
             await asyncio.sleep(delay)
 
     # Should never reach here, but satisfy the type checker.
-    assert last_exc is not None  # noqa: S101
+    assert last_exc is not None
     raise last_exc
 
 

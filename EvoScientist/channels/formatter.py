@@ -12,8 +12,7 @@ Channels no longer need per-file format functions — they just declare
 from __future__ import annotations
 
 import re
-from typing import Callable
-
+from collections.abc import Callable
 
 # ═════════════════════════════════════════════════════════════════════
 # Markdown conversion engine (formerly markdown_utils.py)
@@ -290,6 +289,6 @@ class UnifiedFormatter:
         return convert_markdown(text, **self._profile)
 
     @classmethod
-    def for_channel(cls, format_type: str) -> "UnifiedFormatter":
+    def for_channel(cls, format_type: str) -> UnifiedFormatter:
         """Factory: create a formatter for the given format type."""
         return cls(format_type)

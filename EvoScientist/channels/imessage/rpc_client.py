@@ -7,8 +7,9 @@ similar to OpenClaw's approach.
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ class ImsgRpcClient:
         try:
             self._process.terminate()
             await asyncio.wait_for(self._process.wait(), timeout=2.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._process.kill()
             await self._process.wait()
 
@@ -150,7 +151,7 @@ class ImsgRpcClient:
 
         try:
             return await asyncio.wait_for(future, timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._pending.pop(request_id, None)
             raise Exception(f"RPC request timeout: {method}")
 
@@ -209,7 +210,7 @@ class ImsgRpcClient:
             if future is None:
                 return
 
-            if "error" in data and data["error"]:
+            if data.get("error"):
                 error = data["error"]
                 msg = error.get("message", "RPC error")
                 future.set_exception(Exception(msg))

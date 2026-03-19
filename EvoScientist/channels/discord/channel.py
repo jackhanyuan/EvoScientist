@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 
-from ..base import Channel, RawIncoming, ChannelError
+from ..base import Channel, ChannelError, RawIncoming
 from ..capabilities import DISCORD as DISCORD_CAPS
 from ..config import BaseChannelConfig
 
@@ -97,7 +97,7 @@ class DiscordChannel(Channel):
 
         try:
             await asyncio.wait_for(self._ready.wait(), timeout=60)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise ChannelError(
                 "Discord bot failed to connect within 60s. "
                 "Check network/proxy connectivity to gateway.discord.gg"

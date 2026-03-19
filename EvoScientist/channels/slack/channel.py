@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 
-from ..base import Channel, RawIncoming, ChannelError
+from ..base import Channel, ChannelError, RawIncoming
 from ..capabilities import SLACK as SLACK_CAPS
 from ..config import BaseChannelConfig
 
@@ -43,10 +43,10 @@ class SlackChannel(Channel):
             )
 
         try:
-            from slack_sdk.web.async_client import AsyncWebClient
             from slack_sdk.socket_mode.aiohttp import SocketModeClient
             from slack_sdk.socket_mode.request import SocketModeRequest
             from slack_sdk.socket_mode.response import SocketModeResponse
+            from slack_sdk.web.async_client import AsyncWebClient
         except ImportError:
             raise ChannelError(
                 "slack-sdk or aiohttp not installed. "
@@ -65,7 +65,7 @@ class SlackChannel(Channel):
                 timeout=15,
             )
             self._bot_user_id = auth["user_id"]
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise ChannelError(
                 "Slack auth_test timed out — check network and bot token"
             )
@@ -110,7 +110,7 @@ class SlackChannel(Channel):
                 self._socket_client.connect(),
                 timeout=30,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise ChannelError(
                 "Slack Socket Mode connection timed out — "
                 "check app token (must start with xapp-) and "

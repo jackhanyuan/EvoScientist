@@ -16,12 +16,12 @@ import logging
 import random
 import time
 from collections import OrderedDict, deque
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
-from .bus.events import InboundMessage, OutboundMessage
 from .base import RawIncoming
+from .bus.events import InboundMessage, OutboundMessage
 
 _logger = logging.getLogger(__name__)
 
@@ -543,8 +543,8 @@ class FormattingMiddleware(OutboundMiddlewareBase):
     """
 
     def __init__(self, capabilities: Any) -> None:
-        from .formatter import UnifiedFormatter
         from .capabilities import ChannelCapabilities
+        from .formatter import UnifiedFormatter
 
         caps: ChannelCapabilities = capabilities
         self._formatter = UnifiedFormatter.for_channel(caps.format_type)

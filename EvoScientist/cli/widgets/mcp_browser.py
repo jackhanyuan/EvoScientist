@@ -13,7 +13,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from rich.text import Text
-
 from textual.binding import Binding, BindingType
 from textual.containers import Container
 from textual.message import Message
@@ -163,7 +162,9 @@ class MCPBrowserWidget(Widget):
         if self._title_widget:
             self._title_widget.update("Filter by tag:")
         if self._help_widget:
-            self._help_widget.update("\u2191/\u2193 navigate \u00b7 Enter select \u00b7 Esc cancel")
+            self._help_widget.update(
+                "\u2191/\u2193 navigate \u00b7 Enter select \u00b7 Esc cancel"
+            )
 
         for i, widget in enumerate(self._row_widgets):
             if i < len(self._tag_items):
@@ -303,9 +304,7 @@ class MCPBrowserWidget(Widget):
                 self._server_items = list(self._servers)
             else:
                 self._server_items = [
-                    s
-                    for s in self._servers
-                    if tag in [t.lower() for t in s.tags]
+                    s for s in self._servers if tag in [t.lower() for t in s.tags]
                 ]
             self._phase = 2
             self._selected = 0

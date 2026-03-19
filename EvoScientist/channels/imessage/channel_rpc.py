@@ -10,15 +10,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from ..base import Channel, RawIncoming, ChannelError
+from ..base import Channel, ChannelError, RawIncoming
 from ..config import BaseChannelConfig
 from .rpc_client import ImsgRpcClient, RpcNotification
 from .targets import (
-    normalize_handle,
-    parse_target,
-    ChatIdTarget,
     ChatGuidTarget,
     ChatIdentifierTarget,
+    ChatIdTarget,
+    normalize_handle,
+    parse_target,
 )
 
 logger = logging.getLogger(__name__)

@@ -27,15 +27,15 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from aiohttp import web
 
-from ..mixins import WebhookMixin, TokenMixin
-from ..base import Channel, RawIncoming, ChannelError
+from ..base import Channel, ChannelError, RawIncoming
 from ..capabilities import WECHAT as WECHAT_CAPS
 from ..config import BaseChannelConfig
+from ..mixins import TokenMixin, WebhookMixin
 
 logger = logging.getLogger(__name__)
 
@@ -139,8 +139,8 @@ class WeChatChannel(Channel, WebhookMixin, TokenMixin):
 
     async def start(self) -> None:
         try:
+            import httpx
             from aiohttp import web
-            import httpx  # noqa: F401
         except ImportError:
             raise ChannelError(
                 "aiohttp or httpx not installed. "
@@ -274,7 +274,7 @@ class WeChatChannel(Channel, WebhookMixin, TokenMixin):
 
     # ── Signature verification (GET callback) ─────────────────────
 
-    async def _handle_verify(self, request) -> "web.Response":
+    async def _handle_verify(self, request) -> web.Response:
         """Handle GET /wechat/callback for URL verification.
 
         WeChat/WeCom sends: msg_signature, timestamp, nonce, echostr
@@ -322,9 +322,10 @@ class WeChatChannel(Channel, WebhookMixin, TokenMixin):
 
     # ── Inbound message handling (POST callback) ──────────────────
 
-    async def _handle_message(self, request) -> "web.Response":
+    async def _handle_message(self, request) -> web.Response:
         """Handle POST /wechat/callback for incoming messages."""
         from aiohttp import web
+
         from .crypto import parse_xml
 
         try:

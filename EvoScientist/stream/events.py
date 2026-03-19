@@ -8,9 +8,13 @@ import asyncio
 import base64
 import mimetypes
 import os
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
-from langchain_core.messages import AIMessage, AIMessageChunk  # type: ignore[import-untyped]
+from langchain_core.messages import (  # type: ignore[import-untyped]
+    AIMessage,
+    AIMessageChunk,
+)
 
 from .emitter import StreamEventEmitter
 from .tracker import ToolCallTracker

@@ -6,9 +6,8 @@ adapted for deepagents tool names.
 """
 
 import sys
-from pathlib import PurePath
 from enum import Enum
-
+from pathlib import PurePath
 
 # === Status marker constants ===
 SUCCESS_PREFIX = "[OK]"

@@ -6,12 +6,12 @@ from datetime import datetime
 from pathlib import Path
 
 from ..base import (
-    Channel,
-    RawIncoming,
-    ChannelError,
+    AUDIO_EXTS,
     IMAGE_EXTS,
     VIDEO_EXTS,
-    AUDIO_EXTS,
+    Channel,
+    ChannelError,
+    RawIncoming,
 )
 from ..capabilities import TELEGRAM as TELEGRAM_CAPS
 from ..config import BaseChannelConfig

@@ -6,17 +6,16 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from EvoScientist.ccproxy_manager import (
-    is_ccproxy_available,
     check_ccproxy_auth,
-    is_ccproxy_running,
-    start_ccproxy,
-    stop_ccproxy,
     ensure_ccproxy,
+    is_ccproxy_available,
+    is_ccproxy_running,
+    maybe_start_ccproxy,
     setup_ccproxy_env,
     setup_codex_env,
-    maybe_start_ccproxy,
+    start_ccproxy,
+    stop_ccproxy,
 )
-
 
 # =============================================================================
 # is_ccproxy_available

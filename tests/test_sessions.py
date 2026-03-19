@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import UTC
 from unittest.mock import patch
 
 from EvoScientist.sessions import (
@@ -18,8 +19,6 @@ from EvoScientist.sessions import (
     list_threads,
     thread_exists,
 )
-
-
 from tests.conftest import run_async as _run
 
 
@@ -53,37 +52,37 @@ class TestFormatRelativeTime(unittest.TestCase):
         self.assertEqual(_format_relative_time("not-a-date"), "")
 
     def test_recent(self):
-        from datetime import datetime, timezone
+        from datetime import datetime
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         result = _format_relative_time(now)
         self.assertIn("just now", result)
 
     def test_minutes(self):
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
-        ts = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        ts = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
         result = _format_relative_time(ts)
         self.assertIn("min ago", result)
 
     def test_hours(self):
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
-        ts = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        ts = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
         result = _format_relative_time(ts)
         self.assertIn("hour", result)
 
     def test_days(self):
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
-        ts = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+        ts = (datetime.now(UTC) - timedelta(days=3)).isoformat()
         result = _format_relative_time(ts)
         self.assertIn("day", result)
 
     def test_months(self):
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
-        ts = (datetime.now(timezone.utc) - timedelta(days=65)).isoformat()
+        ts = (datetime.now(UTC) - timedelta(days=65)).isoformat()
         result = _format_relative_time(ts)
         self.assertIn("month", result)
 
