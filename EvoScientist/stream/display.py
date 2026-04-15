@@ -1075,6 +1075,7 @@ def _run_streaming(
     _state: StreamState | None = None,
     _hitl_depth: int = 0,
     _media_sent: set[str] | None = None,
+    _sent_thinking_text: str | None = None,
 ) -> str:
     """Run async streaming and render with Rich Live display.
 
@@ -1087,8 +1088,10 @@ def _run_streaming(
         show_thinking: Whether to show thinking panel
         interactive: If True, use simplified final display (no panel)
         on_thinking: Optional sync callback receiving full thinking text.
-            Called once when thinking phase ends (transitions to tool/text)
-            and accumulated thinking >= 200 chars.
+            Called when thinking ends (transitions to tool/text) and
+            accumulated thinking >= 200 chars. Uses content-based
+            deduplication across resume/HITL cycles so the same thinking
+            is not replayed, but genuinely new thinking is still sent.
         on_todo: Optional sync callback receiving todo items list.
             Called once when write_todos tool_call is detected.
         on_file_write: Optional sync callback receiving the real filesystem path
@@ -1100,29 +1103,32 @@ def _run_streaming(
         The final response text.
     """
     state = _state if _state is not None else StreamState()
-    _thinking_sent = False
     _todo_sent = False
     if _media_sent is None:
         _media_sent = set()
     _MIN_THINKING_LEN = 200
 
     async def _consume() -> None:
-        nonlocal _thinking_sent, _todo_sent
+        nonlocal _sent_thinking_text, _todo_sent
         async for event in stream_agent_events(
             agent, message, thread_id, metadata=metadata
         ):
             event_type = state.handle_event(event)
 
-            # Send thinking to channel when transitioning away from thinking
+            # Relay thinking to channel when transitioning away from
+            # thinking phase.  Uses content comparison so that replayed
+            # thinking after resume is skipped, but genuinely new
+            # thinking is still delivered.
             if (
                 on_thinking
-                and not _thinking_sent
-                and state.thinking_text
                 and event_type != "thinking"
+                and state.thinking_text
                 and len(state.thinking_text) >= _MIN_THINKING_LEN
             ):
-                on_thinking(state.thinking_text.rstrip())
-                _thinking_sent = True
+                current = state.thinking_text.rstrip()
+                if current != _sent_thinking_text:
+                    on_thinking(current)
+                    _sent_thinking_text = current
 
             # Send todo list to channel on first write_todos tool_call
             if (
@@ -1132,15 +1138,6 @@ def _run_streaming(
                 and event.get("name") == "write_todos"
                 and state.todo_items
             ):
-                # Flush thinking before todo if not sent yet
-                if (
-                    on_thinking
-                    and not _thinking_sent
-                    and state.thinking_text
-                    and len(state.thinking_text) >= _MIN_THINKING_LEN
-                ):
-                    on_thinking(state.thinking_text.rstrip())
-                    _thinking_sent = True
                 on_todo(state.todo_items)
                 _todo_sent = True
 
@@ -1310,10 +1307,12 @@ def _run_streaming(
 
         loop.run_until_complete(_run_with_refresh())
 
-    # Flush any remaining thinking that wasn't sent during streaming
-    if on_thinking and not _thinking_sent and state.thinking_text:
-        if len(state.thinking_text) >= _MIN_THINKING_LEN:
-            on_thinking(state.thinking_text.rstrip())
+    # Flush any remaining thinking that wasn't sent during streaming.
+    if on_thinking and state.thinking_text:
+        current = state.thinking_text.rstrip()
+        if len(current) >= _MIN_THINKING_LEN and current != _sent_thinking_text:
+            on_thinking(current)
+            _sent_thinking_text = current
 
     # ask_user: check before HITL (ask_user uses the same resume loop)
     if state.pending_ask_user is not None and _hitl_depth < _MAX_HITL_ITERATIONS:
@@ -1324,6 +1323,7 @@ def _run_streaming(
         from langgraph.types import Command  # type: ignore[import-untyped]
 
         state.pending_ask_user = None
+        state.thinking_text = ""  # reset accumulation for fresh round
         return _run_streaming(
             agent=agent,
             message=Command(resume=result),
@@ -1341,6 +1341,7 @@ def _run_streaming(
             _state=state,
             _hitl_depth=_hitl_depth + 1,
             _media_sent=_media_sent,
+            _sent_thinking_text=_sent_thinking_text,
         )
 
     # HITL: check for pending interrupt and handle approval
@@ -1353,6 +1354,7 @@ def _run_streaming(
             from langgraph.types import Command  # type: ignore[import-untyped]
 
             state.pending_interrupt = None
+            state.thinking_text = ""  # reset accumulation for fresh round
             return _run_streaming(
                 agent=agent,
                 message=Command(resume={"decisions": decisions}),
@@ -1370,6 +1372,7 @@ def _run_streaming(
                 _state=state,
                 _hitl_depth=_hitl_depth + 1,
                 _media_sent=_media_sent,
+                _sent_thinking_text=_sent_thinking_text,
             )
     elif state.pending_interrupt is not None:
         _logger.warning(
