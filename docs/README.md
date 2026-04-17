@@ -4,7 +4,7 @@
 
 | Example                                                     | Description                                                                     |
 |------------------------------------------------------------|---------------------------------------------------------------------------------|
-| [Survey literature](examples/survey-literature/README.md)   | Run EvoScientist with the `paper-navigator` skill to produce a bilingual, conference-grade literature survey |
+| [Survey literature](https://github.com/EvoScientist/EvoScientist/tree/main/docs/examples/survey-literature)   | Run EvoScientist with the `paper-navigator` skill to produce a bilingual, conference-grade literature survey |
 
 
 | Recipe                                                     | Description                                                                     |
