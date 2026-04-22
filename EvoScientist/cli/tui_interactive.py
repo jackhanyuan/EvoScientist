@@ -19,6 +19,7 @@ from rich.console import Group
 from rich.text import Text
 
 import EvoScientist.cli.channel as _ch_mod
+from EvoScientist.cli.widgets.thread_selector import ThreadPickerWidget
 
 from ..commands import CommandContext
 from ..commands import manager as cmd_manager
@@ -353,13 +354,16 @@ def run_textual_interactive(
             self._picker_future: asyncio.Future | None = None
             self._browser_future: asyncio.Future | None = None
             self._mcp_browser_future: asyncio.Future | None = None
+            self._model_picker_future: asyncio.Future | None = None
             self._history_suggester = HistorySuggester(DATA_DIR / "history")
             self._history_index: int = -1  # -1 = not browsing history
             self._history_saved_input: str = ""  # saved current input before browsing
             self._background_tasks: set[asyncio.Task] = set()
             self._quit_pending: bool = False
+            self._current_model: str | None = model
+            self._current_provider: str | None = provider
             self._status_started_at = datetime.now()
-            self._status_base_snapshot = make_empty_status_snapshot(model)
+            self._status_base_snapshot = make_empty_status_snapshot(self._current_model)
             self._status_snapshot = self._status_base_snapshot
             self._status_streaming_text = ""
             self._status_last_input_tokens: int | None = None
@@ -430,6 +434,26 @@ def run_textual_interactive(
 
             return await self._wait_for_mcp_browse(browser)
 
+        async def wait_for_model_pick(
+            self,
+            entries: list[tuple[str, str, str]],
+            current_model: str | None,
+            current_provider: str | None,
+        ) -> tuple[str, str] | None:
+            from .widgets.model_picker import ModelPickerWidget
+
+            container = self.query_one("#chat", VerticalScroll)
+            picker = ModelPickerWidget(
+                entries,
+                current_model=current_model,
+                current_provider=current_provider,
+            )
+            await container.mount(picker)
+            self._schedule_scroll_to_bottom(container, delays=())
+            picker.focus()
+
+            return await self._wait_for_model_pick(picker)
+
         def clear_chat(self) -> None:
             container = self.query_one("#chat", VerticalScroll)
             welcome = self.query_one("#welcome", Static)
@@ -452,7 +476,7 @@ def run_textual_interactive(
                 checkpointer=self._checkpointer,
             )
             self._status_started_at = datetime.now()
-            self._status_base_snapshot = make_empty_status_snapshot(model)
+            self._status_base_snapshot = make_empty_status_snapshot(self._current_model)
             self._status_snapshot = self._status_base_snapshot
             self._status_streaming_text = ""
             self._status_last_input_tokens = None
@@ -478,7 +502,7 @@ def run_textual_interactive(
                 checkpointer=self._checkpointer,
             )
             self._status_started_at = datetime.now()
-            self._status_base_snapshot = make_empty_status_snapshot(model)
+            self._status_base_snapshot = make_empty_status_snapshot(self._current_model)
             self._status_snapshot = self._status_base_snapshot
             self._status_streaming_text = ""
             self._status_last_input_tokens = None
@@ -725,7 +749,9 @@ def run_textual_interactive(
                 return {"answers": result.get("answers", []), "status": "answered"}
             return {"status": "cancelled"}
 
-        async def _wait_for_thread_pick(self, picker_widget) -> str | None:
+        async def _wait_for_thread_pick(
+            self, picker_widget: ThreadPickerWidget
+        ) -> str | None:
             """Wait for user to pick a thread from ThreadPickerWidget.
 
             Returns the selected thread_id, or ``None`` on cancel/timeout.
@@ -807,6 +833,34 @@ def run_textual_interactive(
             """Handle MCPBrowserWidget.Cancelled message."""
             if self._mcp_browser_future and not self._mcp_browser_future.done():
                 self._mcp_browser_future.set_result(None)
+
+        async def _wait_for_model_pick(self, picker_widget) -> tuple[str, str] | None:
+            """Wait for user to pick a model from ModelPickerWidget.
+
+            Returns ``(name, provider)`` or ``None`` on cancel/timeout.
+            """
+            self._model_picker_future = asyncio.get_event_loop().create_future()
+            try:
+                return await asyncio.wait_for(self._model_picker_future, timeout=120)
+            except (TimeoutError, asyncio.CancelledError):
+                return None
+            finally:
+                self._model_picker_future = None
+                try:
+                    picker_widget.remove()
+                except Exception:
+                    _channel_logger.debug("model picker cleanup failed", exc_info=True)
+                self.query_one("#prompt", ChatTextArea).focus()
+
+        def on_model_picker_widget_picked(self, event) -> None:  # type: ignore[override]
+            """Handle ModelPickerWidget.Picked message."""
+            if self._model_picker_future and not self._model_picker_future.done():
+                self._model_picker_future.set_result((event.name, event.provider))
+
+        def on_model_picker_widget_cancelled(self, event) -> None:  # type: ignore[override]
+            """Handle ModelPickerWidget.Cancelled message."""
+            if self._model_picker_future and not self._model_picker_future.done():
+                self._model_picker_future.set_result(None)
 
         # ── Streaming core ─────────────────────────────────────
 
@@ -901,7 +955,7 @@ def run_textual_interactive(
                     lambda: container.scroll_end(animate=False),
                 )
 
-            metadata = build_metadata(self._workspace_dir, model)
+            metadata = build_metadata(self._workspace_dir, self._current_model)
             response = ""
 
             async def _remove_w(w: Static | None) -> None:
@@ -1832,11 +1886,12 @@ def run_textual_interactive(
                     # Force-resolve the future
                     self._ask_user_future.set_result({"type": "cancelled"})
                 return
-            # Delegate to ApprovalWidget, ThreadPickerWidget, or SkillBrowserWidget if focused
+            # Delegate to focused interactive widget
             focused = self.focused
             if focused is not None:
                 from .widgets.approval_widget import ApprovalWidget
                 from .widgets.mcp_browser import MCPBrowserWidget
+                from .widgets.model_picker import ModelPickerWidget
                 from .widgets.skill_browser import SkillBrowserWidget
                 from .widgets.thread_selector import ThreadPickerWidget
 
@@ -1852,6 +1907,14 @@ def run_textual_interactive(
                 if isinstance(focused, MCPBrowserWidget):
                     focused.action_cancel()
                     return
+                if isinstance(focused, ModelPickerWidget):
+                    focused.action_cancel()
+                    if (
+                        self._model_picker_future
+                        and not self._model_picker_future.done()
+                    ):
+                        self._model_picker_future.set_result(None)
+                    return
             if self._queued_messages:
                 self._queued_messages.pop()
                 self._render_queue_indicator()
@@ -1865,12 +1928,13 @@ def run_textual_interactive(
                 self._render_completions()
                 return
 
-            # Skip if an ApprovalWidget, AskUserWidget, ThreadPickerWidget, or SkillBrowserWidget has focus
+            # Skip if an interactive picker widget has focus
             focused = self.focused
             if focused is not None:
                 from .widgets.approval_widget import ApprovalWidget
                 from .widgets.ask_user_widget import AskUserWidget
                 from .widgets.mcp_browser import MCPBrowserWidget
+                from .widgets.model_picker import ModelPickerWidget
                 from .widgets.skill_browser import SkillBrowserWidget
                 from .widgets.thread_selector import ThreadPickerWidget
 
@@ -1887,6 +1951,9 @@ def run_textual_interactive(
                     focused.action_move_up()
                     return
                 if isinstance(focused, MCPBrowserWidget):
+                    focused.action_move_up()
+                    return
+                if isinstance(focused, ModelPickerWidget):
                     focused.action_move_up()
                     return
             if self._queued_messages:
@@ -1924,6 +1991,7 @@ def run_textual_interactive(
                 from .widgets.approval_widget import ApprovalWidget
                 from .widgets.ask_user_widget import AskUserWidget
                 from .widgets.mcp_browser import MCPBrowserWidget
+                from .widgets.model_picker import ModelPickerWidget
                 from .widgets.skill_browser import SkillBrowserWidget
                 from .widgets.thread_selector import ThreadPickerWidget
 
@@ -1940,6 +2008,9 @@ def run_textual_interactive(
                     focused.action_move_down()
                     return
                 if isinstance(focused, MCPBrowserWidget):
+                    focused.action_move_down()
+                    return
+                if isinstance(focused, ModelPickerWidget):
                     focused.action_move_down()
                     return
 
@@ -2076,6 +2147,12 @@ def run_textual_interactive(
 
             try:
                 if await cmd_manager.execute(command, ctx):
+                    # Sync agent back if command replaced it (e.g. /model)
+                    if ctx.agent is not self._agent:
+                        self._agent = ctx.agent
+                        if _channels_is_running():
+                            _ch_mod._cli_agent = self._agent
+                            _ch_mod._cli_thread_id = self._conversation_tid
                     # Do NOT invalidate the usage baseline after /compact.
                     # build_session_status_snapshot() only counts raw checkpoint
                     # messages (~46 tokens) and misses system prompt + tool
@@ -2247,25 +2324,25 @@ def run_textual_interactive(
                     self._status_base_snapshot = apply_user_text_to_snapshot(
                         make_usage_status_snapshot(
                             self._status_last_input_tokens,
-                            model_name=model,
+                            model_name=self._current_model,
                         ),
                         pending,
                     )
                 else:
                     self._status_base_snapshot = await build_session_status_snapshot(
                         self._conversation_tid,
-                        model_name=model,
+                        model_name=self._current_model,
                         pending_user_text=pending,
                     )
             elif self._status_last_input_tokens is not None:
                 self._status_base_snapshot = make_usage_status_snapshot(
                     self._status_last_input_tokens,
-                    model_name=model,
+                    model_name=self._current_model,
                 )
             else:
                 self._status_base_snapshot = await build_session_status_snapshot(
                     self._conversation_tid,
-                    model_name=model,
+                    model_name=self._current_model,
                 )
             if reset_streaming_text:
                 self._status_streaming_text = ""
@@ -2278,7 +2355,7 @@ def run_textual_interactive(
             self._status_last_input_tokens = input_tokens
             self._status_base_snapshot = make_usage_status_snapshot(
                 input_tokens,
-                model_name=model,
+                model_name=self._current_model,
             )
             self._rebuild_status_snapshot()
 
@@ -2293,9 +2370,20 @@ def run_textual_interactive(
             self._status_last_input_tokens = tokens_after
             self._status_base_snapshot = make_usage_status_snapshot(
                 tokens_after,
-                model_name=model,
+                model_name=self._current_model,
             )
             self._rebuild_status_snapshot()
+
+        def update_status_after_model_change(
+            self, new_model: str, new_provider: str | None = None
+        ) -> None:
+            """Update the status bar and welcome banner after /model switches the LLM."""
+            self._current_model = new_model
+            if new_provider is not None:
+                self._current_provider = new_provider
+            self._status_base_snapshot = make_empty_status_snapshot(new_model)
+            self._rebuild_status_snapshot()
+            self._render_welcome()
 
         def _set_status_streaming_text(self, text: str | None) -> None:
             """Update in-flight assistant text shown in the context bar."""
@@ -2342,8 +2430,8 @@ def run_textual_interactive(
                     thread_id=self._conversation_tid,
                     workspace_dir=self._workspace_dir,
                     mode=mode,
-                    model=model,
-                    provider=provider,
+                    model=self._current_model,
+                    provider=self._current_provider,
                     ui_backend="tui",
                     channels=channels_info,
                 )
