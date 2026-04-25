@@ -141,8 +141,6 @@ def copy_selection_to_clipboard(app: App) -> None:
         if not hasattr(widget, "text_selection") or not widget.text_selection:
             continue
         selection = widget.text_selection
-        if selection.end is None:
-            continue
         try:
             result = widget.get_selection(selection)
         except (AttributeError, TypeError, ValueError, IndexError) as exc:
