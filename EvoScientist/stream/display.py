@@ -9,6 +9,7 @@ import asyncio
 import inspect
 import logging
 import os
+import re
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -46,6 +47,23 @@ from .utils import (
 
 # Media file extensions that should trigger on_file_write callback
 _MEDIA_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".pdf"}
+
+# LLM output sometimes omits the CommonMark-required space after `#` (e.g.
+# "###文件系统"), which makes Rich render the line as raw text. The lookahead
+# `(?=[^ \t#\r\n])` requires a real non-excluded next char, so the helper is
+# idempotent and leaves bare `#` at EOS / CRLF boundaries alone.
+_HEADING_FIX_RE = re.compile(r"^(#{1,6})(?=[^ \t#\r\n])", flags=re.MULTILINE)
+
+
+def _fix_markdown_heading_spacing(text: str) -> str:
+    """Insert a space after `#`+ ATX heading markers missing one.
+
+    Apply to a display copy only — never write the result back into the
+    streaming buffer. Known limitation: `###define` at column zero inside
+    a fenced code block still gets a space (context-free regex).
+    """
+    return _HEADING_FIX_RE.sub(r"\1 ", text)
+
 
 formatter = ToolResultFormatter()
 
@@ -696,7 +714,10 @@ def create_streaming_display(
                 clean_response = clean_response.rstrip().removesuffix("...").rstrip()
             if clean_response:
                 elements.append(Text(""))  # blank separator
-                elements.append(response_markdown or Markdown(clean_response))
+                elements.append(
+                    response_markdown
+                    or Markdown(_fix_markdown_heading_spacing(clean_response))
+                )
 
         # Token usage stats (right-aligned)
         if total_input_tokens or total_output_tokens:
@@ -749,7 +770,10 @@ def create_streaming_display(
         # Stream response in real-time as tokens arrive (all tools done)
         if response_text and all_done:
             elements.append(Text(""))  # blank separator
-            elements.append(response_markdown or Markdown(response_text))
+            elements.append(
+                response_markdown
+                or Markdown(_fix_markdown_heading_spacing(response_text))
+            )
 
     if not elements:
         elements.append(Spinner("dots", text=" Processing...", style="cyan"))
@@ -877,7 +901,11 @@ def display_final_results(
         while clean_response.endswith("\n...") or clean_response.rstrip() == "...":
             clean_response = clean_response.rstrip().removesuffix("...").rstrip()
         console.print()
-        console.print(Markdown(clean_response or state.response_text))
+        console.print(
+            Markdown(
+                _fix_markdown_heading_spacing(clean_response or state.response_text)
+            )
+        )
 
     # Token usage stats (right-aligned)
     if state.total_input_tokens or state.total_output_tokens:
@@ -1634,7 +1662,9 @@ async def _astream_to_console(
         while clean.endswith("\n...") or clean.rstrip() == "...":
             clean = clean.rstrip().removesuffix("...").rstrip()
         console.print()
-        console.print(Markdown(clean or state.response_text))
+        console.print(
+            Markdown(_fix_markdown_heading_spacing(clean or state.response_text))
+        )
         console.print()
 
     return (state.response_text or "").strip()
